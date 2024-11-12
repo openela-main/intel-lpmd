@@ -1,0 +1,51 @@
+From 1918cd77f5f26eeb4f9288ed45072068e1b4da34 Mon Sep 17 00:00:00 2001
+From: Kate Hsuan <hpa@redhat.com>
+Date: Tue, 16 Jul 2024 11:31:00 +0800
+Subject: [PATCH] lpmd_cpu: Fix compiler above array bound error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+n file included from /usr/include/glib-2.0/glib.h:64,
+                 from src/lpmd.h:48,
+                 from src/lpmd_cpu.c:52:
+src/lpmd_cpu.c: In function ‘add_cpu’:
+src/lpmd_cpu.c:408:66: error: array subscript 8 is above array bounds of ‘struct lpm_cpus[7]’ [-Werror=array-bounds=]
+  408 |                 lpmd_log_debug ("\tDetected %s CPU%d\n", cpumasks[idx].name, cpu);
+      |                                                          ~~~~~~~~^~~~~
+src/lpmd_cpu.c:67:24: note: while referencing ‘cpumasks’
+   67 | static struct lpm_cpus cpumasks[CPUMASK_MAX] = {
+      |                        ^~~~~~~~
+cc1: all warnings being treated as errors
+make[2]: *** [Makefile:686: src/intel_lpmd-lpmd_cpu.o] Error 1
+make[1]: *** [Makefile:868: all-recursive] Error 1
+make: *** [Makefile:459: all] Error 2
+---
+ src/lpmd_cpu.c | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/lpmd_cpu.c b/src/lpmd_cpu.c
+index 310bf65..808ae4b 100644
+--- a/src/lpmd_cpu.c
++++ b/src/lpmd_cpu.c
+@@ -402,10 +402,14 @@ int add_cpu(int cpu, enum cpumask_idx idx)
+ 	if (idx & (CPUMASK_HFI | CPUMASK_HFI_SUV | CPUMASK_HFI_BANNED))
+ 		return 0;
+ 
+-	if (idx == CPUMASK_LPM_DEFAULT)
++	if (idx == CPUMASK_LPM_DEFAULT) {
+ 		lpmd_log_info ("\tDetected %s CPU%d\n", cpumasks[idx].name, cpu);
+-	else
+-		lpmd_log_debug ("\tDetected %s CPU%d\n", cpumasks[idx].name, cpu);
++	} else {
++		if (idx < CPUMASK_MAX)
++			lpmd_log_debug ("\tDetected %s CPU%d\n", cpumasks[idx].name, cpu);
++		else
++			lpmd_log_debug ("\tIncorrect CPU ID for CPU%d\n", cpu);
++	}
+ 
+ 	return 0;
+ }
+-- 
+2.45.2
+
