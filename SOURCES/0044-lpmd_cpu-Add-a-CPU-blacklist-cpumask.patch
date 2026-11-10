@@ -1,0 +1,70 @@
+From d31613630df19ac191590dd4c0cbed2a38fedc2d Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Tue, 17 Mar 2026 13:16:13 +0100
+Subject: [PATCH 44/56] lpmd_cpu: Add a CPU blacklist cpumask
+
+Add a new cpumask that's used to clearing cores from other cpumasks.
+Fill the new cpumask with CPUs that couldn't be reached with
+sched_setaffinity() indicating that they are not available.
+
+The specific context of this change is for cases when CPUs are claimed by
+other cgroups as exclusive and therefore are not available for the lpm
+cgroup. For the cgroup isolation mode this results in LPMD not working
+correctly.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/include/lpmd.h | 1 +
+ src/lpmd_cpu.c     | 4 +++-
+ src/lpmd_cpumask.c | 1 +
+ 3 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index 123c785..08ded1c 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -271,6 +271,7 @@ enum cpumask_idx {
+ 	CPUMASK_HFI_BANNED,
+ 	CPUMASK_HFI_LAST,
+ 	CPUMASK_UTIL,
++	CPUMASK_BLACKLIST,
+ 	CPUMASK_USER,
+ 	CPUMASK_MAX = CPUMASK_USER + NUM_USER_CPUMASKS,
+ 	CPUMASK_NONE = CPUMASK_MAX,
+diff --git a/src/lpmd_cpu.c b/src/lpmd_cpu.c
+index 9080584..fc3fe4b 100644
+--- a/src/lpmd_cpu.c
++++ b/src/lpmd_cpu.c
+@@ -152,6 +152,7 @@ int is_cpu_atom(int cpu)
+ 
+ 	if (cpu_migrate(cpu) < 0) {
+ 		lpmd_log_error("Failed to migrated to cpu%d\n", cpu);
++		cpumask_add_cpu(cpu, CPUMASK_BLACKLIST);
+ 		return -1;
+ 	}
+ 
+@@ -169,7 +170,8 @@ static int is_cpu_in_l3(int cpu)
+ 
+ 	if (cpu_migrate(cpu) < 0) {
+ 		lpmd_log_error("Failed to migrated to cpu%d\n", cpu);
+-		err (1, "cpu migrate");
++		cpumask_add_cpu(cpu, CPUMASK_BLACKLIST);
++		return -1;
+ 	}
+ 
+ 	for(subleaf = 0;; subleaf++) {
+diff --git a/src/lpmd_cpumask.c b/src/lpmd_cpumask.c
+index 95d3781..b1b6d6b 100644
+--- a/src/lpmd_cpumask.c
++++ b/src/lpmd_cpumask.c
+@@ -43,6 +43,7 @@ static struct lpm_cpus cpumasks[CPUMASK_MAX] = {
+ 		[CPUMASK_HFI] = { .name = "HFI Low Power", },
+ 		[CPUMASK_HFI_BANNED] = { .name = "HFI BANNED", },
+ 		[CPUMASK_HFI_LAST] = { .name = "HFI LAST", },
++		[CPUMASK_BLACKLIST] = { .name = "Blacklist", },
+ };
+ 
+ int is_cpu_online(int cpu)
+-- 
+2.55.0
+

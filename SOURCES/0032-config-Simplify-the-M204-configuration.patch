@@ -1,0 +1,74 @@
+From d5438618f4f700f78bbf75371ca2d7fc9a2ec631 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Mon, 15 Dec 2025 16:16:38 +0100
+Subject: [PATCH 32/56] config: Simplify the M204 configuration
+
+Using the new mechanism for adding only cores of a specified type
+simplify the PTL configuration file to avoid hardcoding core index
+ranges.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ data/intel_lpmd_config_F6_M204.xml | 32 ++++--------------------------
+ 1 file changed, 4 insertions(+), 28 deletions(-)
+
+diff --git a/data/intel_lpmd_config_F6_M204.xml b/data/intel_lpmd_config_F6_M204.xml
+index f1e36da..9029f13 100644
+--- a/data/intel_lpmd_config_F6_M204.xml
++++ b/data/intel_lpmd_config_F6_M204.xml
+@@ -141,48 +141,24 @@ for Intel Energy Optimizer (LPMD) daemon
+ 	<States>
+ 		<CPUFamily> 6 </CPUFamily>
+ 		<CPUModel> 204 </CPUModel>
+-		<CPUConfig> 4P8E4L-25W </CPUConfig>
++		<CPUConfig> * </CPUConfig>
+ 		<State>
+ 			<ID> 1 </ID>
+ 			<Name> UTIL_IDLE </Name>
+ 			<WLTType> 1 </WLTType>
+-			<ActiveCPUs>12-15</ActiveCPUs>
++			<ActiveLcores>ALL</ActiveLcores>
+ 		</State>
+ 		<State>
+ 			<ID> 2 </ID>
+ 			<Name> UTIL_IDLE_SUSTAIN </Name>
+ 			<WLTType> 2 </WLTType>
+-			<ActiveCPUs>0-15</ActiveCPUs>
++			<ActiveCpus> * </ActiveCpus>
+ 		</State>
+ 		<State>
+ 			<ID> 3 </ID>
+ 			<Name> UTIL_IDLE_BURSTY </Name>
+ 			<WLTType> 3 </WLTType>
+-			<ActiveCPUs>0-15</ActiveCPUs>
+-		</State>
+-	</States>
+-
+-	<States>
+-		<CPUFamily> 6 </CPUFamily>
+-		<CPUModel> 204 </CPUModel>
+-		<CPUConfig> 4P4E4L-25W </CPUConfig>
+-		<State>
+-			<ID> 1 </ID>
+-			<Name> UTIL_IDLE </Name>
+-			<WLTType> 1 </WLTType>
+-			<ActiveCPUs>8-11</ActiveCPUs>
+-		</State>
+-		<State>
+-			<ID> 2 </ID>
+-			<Name> UTIL_IDLE_SUSTAIN </Name>
+-			<WLTType> 2 </WLTType>
+-			<ActiveCPUs>0-11</ActiveCPUs>
+-		</State>
+-		<State>
+-			<ID> 3 </ID>
+-			<Name> UTIL_IDLE_BURSTY </Name>
+-			<WLTType> 3 </WLTType>
+-			<ActiveCPUs>0-11</ActiveCPUs>
++			<ActiveCpus> * </ActiveCpus>
+ 		</State>
+ 	</States>
+ 
+-- 
+2.55.0
+

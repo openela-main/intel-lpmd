@@ -1,0 +1,193 @@
+From fec5fa9152769152ab7bfc933fbcf05fbfaddece Mon Sep 17 00:00:00 2001
+From: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+Date: Fri, 10 Apr 2026 17:06:31 -0700
+Subject: [PATCH 11/56] lpmd_misc: Fix ITMT
+
+ITMT became broken when the enabling file was moved to the debugfs. The
+data in the file also changed from printing out 0 or 1 to printing out N
+or Y characters. However 0 and 1 are still accepted for writing.
+
+Change the file that's being accesses to the debugfs and add helpers for
+the Y/N format.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+[Also kept the legacy /procfs control when debugfs doesn't exist]
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ src/include/lpmd.h |  2 ++
+ src/lpmd_helpers.c | 72 ++++++++++++++++++++++++++++++++++++++++++++++
+ src/lpmd_misc.c    | 32 ++++++++++++++++++---
+ 3 files changed, 102 insertions(+), 4 deletions(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index 447ffdd..d14156f 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -410,6 +410,8 @@ int lpmd_write_str_append(const char *name, char *str, int print_level);
+ int lpmd_write_int(const char *name, int val, int print_level);
+ int lpmd_open(const char *name, int print_level);
+ int lpmd_read_int(const char *name, int *val, int print_level);
++int lpmd_read_yn(const char *name, int *val, int print_level);
++int lpmd_write_yn(const char *name, int val, int print_level);
+ char* get_time(void);
+ void time_start(void);
+ char* time_delta(void);
+diff --git a/src/lpmd_helpers.c b/src/lpmd_helpers.c
+index f316912..2e27369 100644
+--- a/src/lpmd_helpers.c
++++ b/src/lpmd_helpers.c
+@@ -252,6 +252,78 @@ int lpmd_read_int(const char *name, int *val, int print_level)
+ 
+ }
+ 
++int lpmd_write_yn(const char *name, int val, int print_level)
++{
++	char str[5];
++	int ret;
++
++	if (!name)
++		return 0;
++
++	ret = snprintf(str, 4, "%d", val);
++	if (ret < 0)
++		return 1;
++
++	return _write_str (name, str, print_level, 2, "r+");
++}
++
++int lpmd_read_yn(const char *name, int *val, int print_level)
++{
++	char prefix[16];
++	FILE *filep;
++	int i, ret;
++
++	if (!name || !val)
++		return 1;
++
++	if (print_level >= 15)
++		return 1;
++
++	if (print_level < 0) {
++		prefix[0] = '\0';
++	}
++	else {
++		for (i = 0; i < print_level; i++)
++			prefix[i] = '\t';
++		prefix[i] = '\0';
++	}
++
++	filep = fopen (name, "r");
++	if (!filep) {
++		lpmd_log_error ("%sOpen %s failed\n", prefix, name);
++		return 1;
++	}
++
++	ret = fgetc(filep);
++	if (ret == EOF) {
++		if (feof(filep)) {
++			lpmd_log_error ("%sRead %s failed due to EOF\n", prefix, name);
++		} else if (ferror(filep)) {
++			lpmd_log_error ("%sRead %s failed, error %s\n", prefix, name, strerror(errno));
++		}
++		fclose (filep);
++		return 1;
++	}
++
++	fclose (filep);
++
++	if (ret == 'Y') {
++		*val = 1;
++	} else if (ret == 'N') {
++		*val = 0;
++	} else {
++		lpmd_log_error ("%sRead %s failed, read %c\n", prefix, name, ret);
++		return 1;
++	}
++
++	if (print_level >= 0)
++		lpmd_log_debug ("%sRead \"%c\" from %s\n", prefix, *val, name);
++
++	return 0;
++
++}
++
++
+ /*
+  * lpmd_open does not require print on success
+  * print_level: -1: don't print on error
+diff --git a/src/lpmd_misc.c b/src/lpmd_misc.c
+index b315bf0..18fc9a6 100644
+--- a/src/lpmd_misc.c
++++ b/src/lpmd_misc.c
+@@ -22,6 +22,7 @@
+ 
+ /* ITMT Management */
+ #define PATH_ITMT_CONTROL "/proc/sys/kernel/sched_itmt_enabled"
++#define PATH_ITMT_CONTROL_DEBUGFS "/sys/kernel/debug/x86/sched_itmt_enabled"
+ 
+ static int has_itmt;
+ static int saved_itmt = SETTING_IGNORE;
+@@ -33,15 +34,30 @@ int get_itmt(void)
+ 	if (!has_itmt)
+ 		return -1;
+ 
++ 	ret = lpmd_read_yn(PATH_ITMT_CONTROL_DEBUGFS, &val, -1);
++	if (!ret)
++		return val;
++
++	lpmd_log_debug("Read ITMT debugfs failed, fallback to sysctl\n");
+ 	ret = lpmd_read_int(PATH_ITMT_CONTROL, &val, -1);
+-	if (ret)
+-		return -1;
++	if (ret) {
++		lpmd_log_error("Read ITMT sysctl failed\n");
++			return -1;
++	}
+ 
+ 	return val;
+ }
+ 
+ int itmt_init(void)
+ {
++
++	if (lpmd_read_yn(PATH_ITMT_CONTROL_DEBUGFS, &saved_itmt, -1)) {
++		lpmd_log_debug("ITMT debugfs not detected\n");
++	} else {
++		has_itmt = 1;
++		return 0;
++	}
++
+ 	if (lpmd_read_int(PATH_ITMT_CONTROL, &saved_itmt, -1))
+ 		lpmd_log_debug("ITMT not detected\n");
+ 	else
+@@ -52,6 +68,8 @@ int itmt_init(void)
+ 
+ int process_itmt(lpmd_config_state_t *state)
+ {
++	int ret;
++
+ 	if (!has_itmt)
+ 		return 0;
+ 
+@@ -60,10 +78,16 @@ int process_itmt(lpmd_config_state_t *state)
+ 			lpmd_log_debug("Ignore ITMT\n");
+ 			return 0;
+ 		case SETTING_RESTORE:
+-			return lpmd_write_int(PATH_ITMT_CONTROL, saved_itmt, -1);
++			ret = lpmd_write_yn(PATH_ITMT_CONTROL_DEBUGFS, saved_itmt, -1);
++			if (ret)
++				return lpmd_write_int(PATH_ITMT_CONTROL, saved_itmt, -1);
++			return ret;
+ 		default:
+ 			lpmd_log_debug ("%s ITMT\n", state->itmt_state ? "Enable" : "Disable");
+-			return lpmd_write_int(PATH_ITMT_CONTROL, state->itmt_state, -1);
++			ret = lpmd_write_yn(PATH_ITMT_CONTROL_DEBUGFS, state->itmt_state, -1);
++			if (ret)
++				return lpmd_write_int(PATH_ITMT_CONTROL, state->itmt_state, -1);
++			return ret;
+ 	}
+ }
+ 
+-- 
+2.55.0
+

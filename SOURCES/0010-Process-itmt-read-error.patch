@@ -1,0 +1,37 @@
+From 01285c1b192fe586e9106bdd370b8646bf474294 Mon Sep 17 00:00:00 2001
+From: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+Date: Fri, 10 Apr 2026 16:41:45 -0700
+Subject: [PATCH 10/56] Process itmt read error
+
+When fail to read PATH_ITMT_CONTROL, return error.
+
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ src/lpmd_misc.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/lpmd_misc.c b/src/lpmd_misc.c
+index b993b4d..b315bf0 100644
+--- a/src/lpmd_misc.c
++++ b/src/lpmd_misc.c
+@@ -28,12 +28,15 @@ static int saved_itmt = SETTING_IGNORE;
+ 
+ int get_itmt(void)
+ {
+-	int val;
++	int val, ret;
+ 
+ 	if (!has_itmt)
+ 		return -1;
+ 
+-	lpmd_read_int(PATH_ITMT_CONTROL, &val, -1);
++	ret = lpmd_read_int(PATH_ITMT_CONTROL, &val, -1);
++	if (ret)
++		return -1;
++
+ 	return val;
+ }
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,35 @@
+From 89d706eca1a17f466a5875ff2743dd4decddb536 Mon Sep 17 00:00:00 2001
+From: "Pandruvada, Srinivas" <srinivas.pandruvada@intel.com>
+Date: Mon, 8 Jun 2026 11:54:09 -0700
+Subject: [PATCH 56/56] When GFX trigger is enabled don't disable util
+ calculation
+
+When GFX util is used as trigger in a state, it can be used along
+with WLT with polling enabled. This is done for Lunar Lake config
+file.
+
+So, don't reset lpmd_config.util_enable = 0 when wlt_polling is
+enabled and there is a GFX util trigger in a state.
+
+Signed-off-by: Pandruvada, Srinivas <srinivas.pandruvada@intel.com>
+---
+ src/lpmd_proc.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/lpmd_proc.c b/src/lpmd_proc.c
+index a459fda..2c4e335 100644
+--- a/src/lpmd_proc.c
++++ b/src/lpmd_proc.c
+@@ -475,7 +475,8 @@ int lpmd_main(void)
+ 	}
+ 
+ 	if (lpmd_config.wlt_hint_enable && !lpmd_config.hfi_lpm_enable) {
+-		lpmd_config.util_enable = 0;
++		if (!lpmd_config.util_gfx_enable && lpmd_config.wlt_hint_poll_enable)
++			lpmd_config.util_enable = 0;
+ 		if (!lpmd_config.wlt_proxy_enable) {
+ 			poll_fds[poll_fd_cnt].fd = wlt_init();
+ 			if (poll_fds[poll_fd_cnt].fd > 0) {
+-- 
+2.55.0
+

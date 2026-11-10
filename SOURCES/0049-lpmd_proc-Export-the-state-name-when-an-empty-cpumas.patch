@@ -1,0 +1,76 @@
+From c01f695e4c8fcb23696db7e39c430c7605a15361 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Mon, 16 Mar 2026 20:01:16 +0100
+Subject: [PATCH 49/56] lpmd_proc: Export the state name when an empty cpumask
+ is caught
+
+Blacklisting CPUs can result in empty cpumask if some other cgroup
+claims all cores present in a given cpumask. A warning without the state
+name is not very useful for the user that might want to debug this.
+
+Try matching the state name by the cpumask idx. It should work for user
+defined states as they receive unique cpumask indexes.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/include/lpmd.h |  2 ++
+ src/lpmd_cpumask.c |  3 ++-
+ src/lpmd_proc.c    | 15 +++++++++++++++
+ 3 files changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index 2e9ff33..cab53b0 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -329,6 +329,8 @@ void lpmd_set_auto(void);
+ int is_on_battery(void);
+ int get_ppd_mode(void);
+ 
++char *user_cpumask_idx_to_state_name(enum cpumask_idx idx);
++
+ /* lpmd_proc.c: init func */
+ int lpmd_main(void);
+ void update_reason(int reason);
+diff --git a/src/lpmd_cpumask.c b/src/lpmd_cpumask.c
+index 2a446cf..3d6a22b 100644
+--- a/src/lpmd_cpumask.c
++++ b/src/lpmd_cpumask.c
+@@ -572,7 +572,8 @@ int cpumask_blacklist(enum cpumask_idx idx)
+ 	cpumasks[idx].hexvals = get_cpus_hexvals(idx, true);
+ 
+ 	if (!CPU_COUNT_S(size_cpumask, cpumasks[idx].mask)) {
+-		lpmd_log_error("%s : cpumask[%d] is empty after blacklisting due to unavailable cpus\n", cpumasks[idx].name, idx);
++		char *state_name = user_cpumask_idx_to_state_name(idx);
++		lpmd_log_error("%s: cpumask[%d] is empty after blacklisting due to unavailable cpus\n", state_name, idx);
+ 		lpmd_log_error("It's possible another cgroup claimed all cores required by cpumask[%d]\n", idx);
+ 	}
+ 
+diff --git a/src/lpmd_proc.c b/src/lpmd_proc.c
+index 91d1d15..3c3fafb 100644
+--- a/src/lpmd_proc.c
++++ b/src/lpmd_proc.c
+@@ -298,6 +298,21 @@ void update_reason(int reason)
+ 	lpmd_config.data.need_update |= 1 << reason;
+ }
+ 
++/*
++ * This function should only work for user defined states - the ones located in
++ * config files inside the <State> tag. Others like the default ones can share
++ * their cpumasks with other states and therefore can't be uniquely identified
++ * by their cpumask idx.
++ */
++char *user_cpumask_idx_to_state_name(enum cpumask_idx idx) {
++
++	for (int i = 0 ; i < MAX_STATES ; i++) {
++		if (lpmd_config.config_states[i].cpumask_idx == idx)
++			return lpmd_config.config_states[i].name;
++	}
++	return NULL;
++}
++
+ // LPMD processing thread. This is callback to pthread lpmd_core_main
+ static void* lpmd_core_main_loop(void *arg)
+ {
+-- 
+2.55.0
+

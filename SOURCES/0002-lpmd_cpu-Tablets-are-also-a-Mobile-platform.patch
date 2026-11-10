@@ -1,0 +1,27 @@
+From 3f642fc7bb5f7798e53acb8be9ede2b99a88eac1 Mon Sep 17 00:00:00 2001
+From: Qubic <ThatQubicFox@protonmail.com>
+Date: Tue, 17 Feb 2026 17:57:30 +0100
+Subject: [PATCH 02/56] lpmd_cpu: Tablets are also a Mobile platform see:
+ https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#preferred-pm-profile-system-types
+
+Signed-off-by: Qubic <ThatQubicFox@protonmail.com>
+---
+ src/lpmd_cpu.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lpmd_cpu.c b/src/lpmd_cpu.c
+index caa6d11..e611b78 100644
+--- a/src/lpmd_cpu.c
++++ b/src/lpmd_cpu.c
+@@ -96,7 +96,7 @@ int detect_supported_platform(lpmd_config_t *lpmd_config)
+ 		return -1;
+ 	}
+ 
+-	if (val != 2) {
++	if (val != 2 && val != 8) {
+ 		lpmd_log_info("Non-Mobile PM profile detected. %s returns %d\n", PATH_PM_PROFILE, val);
+ 		return -1;
+ 	}
+-- 
+2.55.0
+

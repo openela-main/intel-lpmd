@@ -1,0 +1,74 @@
+From 9b789e1727986df2703db152ed7aa11e6a508313 Mon Sep 17 00:00:00 2001
+From: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+Date: Fri, 10 Apr 2026 17:31:38 -0700
+Subject: [PATCH 12/56] make itmt_init() to void
+
+itmt_init() only returns 0, no use of using return value.
+
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ src/include/lpmd.h | 2 +-
+ src/lpmd_misc.c    | 6 ++----
+ src/lpmd_proc.c    | 4 +---
+ 3 files changed, 4 insertions(+), 8 deletions(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index d14156f..223467b 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -335,7 +335,7 @@ int wlt_exit(void);
+ int wlt_update(int fd);
+ 
+ /* lpmd_misc.c */
+-int itmt_init(void);
++void itmt_init(void);
+ int get_itmt(void);
+ int process_itmt(lpmd_config_state_t *state);
+ 
+diff --git a/src/lpmd_misc.c b/src/lpmd_misc.c
+index 18fc9a6..77725e4 100644
+--- a/src/lpmd_misc.c
++++ b/src/lpmd_misc.c
+@@ -48,22 +48,20 @@ int get_itmt(void)
+ 	return val;
+ }
+ 
+-int itmt_init(void)
++void itmt_init(void)
+ {
+ 
+ 	if (lpmd_read_yn(PATH_ITMT_CONTROL_DEBUGFS, &saved_itmt, -1)) {
+ 		lpmd_log_debug("ITMT debugfs not detected\n");
+ 	} else {
+ 		has_itmt = 1;
+-		return 0;
++		return;
+ 	}
+ 
+ 	if (lpmd_read_int(PATH_ITMT_CONTROL, &saved_itmt, -1))
+ 		lpmd_log_debug("ITMT not detected\n");
+ 	else
+ 		has_itmt = 1;
+-
+-	return 0;
+ }
+ 
+ int process_itmt(lpmd_config_state_t *state)
+diff --git a/src/lpmd_proc.c b/src/lpmd_proc.c
+index 450b890..ad58c29 100644
+--- a/src/lpmd_proc.c
++++ b/src/lpmd_proc.c
+@@ -408,9 +408,7 @@ int lpmd_main(void)
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = itmt_init();
+-	if (ret)
+-		return ret;
++	itmt_init();
+ 
+ 	ret = epp_epb_init();
+ 	if (ret)
+-- 
+2.55.0
+

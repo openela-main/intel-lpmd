@@ -1,0 +1,121 @@
+From ba4395eb9bc20f530c567b623b07b8bab86be8ba Mon Sep 17 00:00:00 2001
+From: Peter Jung <ptr1337@archlinux.org>
+Date: Sat, 11 Apr 2026 10:32:52 +0200
+Subject: [PATCH 22/56] Add GetState D-Bus method to query current LPM control
+ mode
+
+Expose the current daemon state (OFF/ON/AUTO/FREEZE/TERMINATE) via a new
+GetState D-Bus method and a STATUS command in intel_lpmd_control, so
+clients can query the active mode without having to track it externally.
+
+Signed-off-by: Peter Jung <ptr1337@archlinux.org>
+---
+ src/intel_lpmd_dbus_interface.xml |  4 ++++
+ src/lpmd_dbus_server.c            | 17 ++++++++++++++
+ tools/intel_lpmd_control.c        | 38 +++++++++++++++++++++++++++----
+ 3 files changed, 54 insertions(+), 5 deletions(-)
+
+diff --git a/src/intel_lpmd_dbus_interface.xml b/src/intel_lpmd_dbus_interface.xml
+index add0fd5..b723034 100644
+--- a/src/intel_lpmd_dbus_interface.xml
++++ b/src/intel_lpmd_dbus_interface.xml
+@@ -19,5 +19,9 @@
+ 		<method name="LPM_AUTO">
+ 		</method>
+ 
++		<method name="GetState">
++			<arg type="s" name="state" direction="out"/>
++		</method>
++
+ 	</interface>
+ </node>
+diff --git a/src/lpmd_dbus_server.c b/src/lpmd_dbus_server.c
+index 318d96b..0b2960b 100644
+--- a/src/lpmd_dbus_server.c
++++ b/src/lpmd_dbus_server.c
+@@ -155,6 +155,23 @@ lpmd_dbus_handle_method_call(GDBusConnection       *connection,
+ 		return;
+ 	}
+ 
++	if (g_strcmp0(method_name, "GetState") == 0) {
++		const char *state_names[] = {
++			[LPMD_OFF] = "OFF",
++			[LPMD_ON] = "ON",
++			[LPMD_AUTO] = "AUTO",
++			[LPMD_FREEZE] = "FREEZE",
++			[LPMD_RESTORE] = "RESTORE",
++			[LPMD_TERMINATE] = "TERMINATE",
++		};
++		int state = get_lpmd_state();
++		const char *name = (state >= 0 && state <= LPMD_TERMINATE) ? state_names[state] : "UNKNOWN";
++
++		g_dbus_method_invocation_return_value(invocation,
++						     g_variant_new("(s)", name));
++		return;
++	}
++
+ 	g_set_error(&error,
+ 		    G_DBUS_ERROR,
+ 		    G_DBUS_ERROR_UNKNOWN_METHOD,
+diff --git a/tools/intel_lpmd_control.c b/tools/intel_lpmd_control.c
+index 293ee49..81dc340 100644
+--- a/tools/intel_lpmd_control.c
++++ b/tools/intel_lpmd_control.c
+@@ -51,10 +51,42 @@ main(int argc, char **argv)
+ 	if (argc < 2) {
+ 		fprintf (stderr, "intel_lpmd_control: missing control command\n");
+ 		fprintf (stderr, "syntax:\n");
+-		fprintf (stderr, "intel_lpmd_control ON|OFF|AUTO\n");
++		fprintf (stderr, "intel_lpmd_control ON|OFF|AUTO|STATUS\n");
+ 		exit (0);
+ 	}
+ 
++	connection = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
++	if (connection == NULL)
++		return FALSE;
++
++	if (!strncmp (argv[1], "STATUS", 6)) {
++		g_autoptr(GVariant) result = NULL;
++
++		result = g_dbus_connection_call_sync (connection,
++						      INTEL_LPMD_SERVICE_NAME,
++						      INTEL_LPMD_SERVICE_OBJECT_PATH,
++						      INTEL_LPMD_SERVICE_INTERFACE,
++						      "GetState",
++						      NULL,
++						      G_VARIANT_TYPE ("(s)"),
++						      G_DBUS_CALL_FLAGS_NONE,
++						      -1,
++						      NULL,
++						      &error);
++
++		if (error != NULL) {
++			g_warning ("Fail on connecting lpmd: %s", error->message);
++			exit (1);
++		}
++
++		const gchar *state;
++
++		g_variant_get (result, "(&s)", &state);
++		g_print ("%s\n", state);
++
++		return 0;
++	}
++
+ 	if (!strncmp (argv[1], "ON", 2))
+ 		command = g_string_new ("LPM_FORCE_ON");
+ 	else if (!strncmp (argv[1], "OFF", 3))
+@@ -66,10 +98,6 @@ main(int argc, char **argv)
+ 		exit (1);
+ 	}
+ 
+-	connection = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
+-	if (connection == NULL)
+-		return FALSE;
+-
+ 	g_dbus_connection_call_sync (connection,
+ 				     INTEL_LPMD_SERVICE_NAME,
+ 				     INTEL_LPMD_SERVICE_OBJECT_PATH,
+-- 
+2.55.0
+

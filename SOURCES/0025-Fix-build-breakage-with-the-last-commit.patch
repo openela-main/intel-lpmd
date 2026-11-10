@@ -1,0 +1,31 @@
+From 9cbc47334aedd36ccdab62ad25e63a63af0aa605 Mon Sep 17 00:00:00 2001
+From: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+Date: Fri, 5 Jun 2026 15:13:55 -0700
+Subject: [PATCH 25/56] Fix build breakage with the last commit
+
+Last commit
+"fix: prevent cgroup isolation churn during WLT polling
+"
+introduced build error for *dir. Fix that.
+
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ src/lpmd_cgroup.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lpmd_cgroup.c b/src/lpmd_cgroup.c
+index e4396c7..e74c8cf 100644
+--- a/src/lpmd_cgroup.c
++++ b/src/lpmd_cgroup.c
+@@ -198,7 +198,7 @@ int cgroup_cleanup(void)
+ 	DIR *dir;
+ 
+ 	last_applied_cpumask = CPUMASK_NONE;
+-	*dir = opendir("/sys/fs/cgroup/lpm");
++	dir = opendir("/sys/fs/cgroup/lpm");
+ 	if (dir) {
+ 		closedir(dir);
+ 		rmdir("/sys/fs/cgroup/lpm");
+-- 
+2.55.0
+

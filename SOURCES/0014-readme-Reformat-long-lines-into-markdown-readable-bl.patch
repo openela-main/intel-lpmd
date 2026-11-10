@@ -1,0 +1,61 @@
+From 9466f9555bd83f51dac06c20141ddd76a48279f8 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Tue, 7 Apr 2026 17:17:14 +0200
+Subject: [PATCH 14/56] readme: Reformat long lines into markdown readable
+ blocks
+
+Get the readme source to a readable format for editing.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ README.md | 20 ++++++++++++++------
+ 1 file changed, 14 insertions(+), 6 deletions(-)
+
+diff --git a/README.md b/README.md
+index d65ae0d..e446ee2 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,11 @@
+ # Intel Low Power Mode Daemon
+ 
+-Intel Low Power Mode Daemon (lpmd) is a Linux daemon designed to optimize active idle power. It selects the most power-efficient CPUs based on a configuration file or CPU topology. Depending on system utilization and other hints, it puts the system into Low Power Mode by activating the power-efficient CPUs and disabling the rest, and restores the system from Low Power Mode by activating all CPUs.
++Intel Low Power Mode Daemon (lpmd) is a Linux daemon designed to optimize active
++idle power. It selects the most power-efficient CPUs based on a configuration
++file or CPU topology. Depending on system utilization and other hints, it puts
++the system into Low Power Mode by activating the power-efficient CPUs and
++disabling the rest, and restores the system from Low Power Mode by activating
++all CPUs.
+ 
+ ## Usage
+ 
+@@ -40,10 +45,13 @@ make
+ sudo make install
+ ```
+ 
+-The generated artifacts are copied to respective directories under `/usr/local`. If a custom install path is preferred other than system default,  make sure `--localstatedir` and `--sysconfdir` are set to the right path that the system can understand. If installed via RPM then artifacts would be under `/usr`.
+-
+-Example command for installation using prefix under `/opt/lpmd_install` dir with `--localstatedir` and `--sysconfdir` set to system default
++The generated artifacts are copied to respective directories under `/usr/local`.
++If a custom install path is preferred other than system default,  make sure
++`--localstatedir` and `--sysconfdir` are set to the right path that the system
++can understand. If installed via RPM then artifacts would be under `/usr`.
+ 
++Example command for installation using prefix under `/opt/lpmd_install` dir with
++`--localstatedir` and `--sysconfdir` set to system default
+ 
+ ```sh
+ ./autogen.sh prefix=/opt/lpmd_install --localstatedir=/var --sysconfdir=/etc
+@@ -87,8 +95,8 @@ Start `lpmd` using:
+ sudo sh tests/lpm_test_interface.sh 4
+ ```
+ 
+-Run a workload and monitor `lpmd` to ensure it puts the system in the appropriate state based on the load.
+-
++Run a workload and monitor `lpmd` to ensure it puts the system in the
++appropriate state based on the load.
+ 
+ ## Releases
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,54 @@
+From e1b353ab97f820654e402e549d43939987a5b512 Mon Sep 17 00:00:00 2001
+From: Jan Engelhardt <jengelh@inai.de>
+Date: Fri, 16 Jan 2026 11:18:08 +0100
+Subject: [PATCH 03/56] build: replace open-coded `if` in configure.ac with
+ `AS_IF`
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The manual says: "This macro should be used instead of plain ‘if’ in
+code outside of an ‘AC_DEFUN’ macro, when the contents of the ‘if’
+use ‘AC_REQUIRE’ directly or indirectly". Since one cannot know
+whether something is going to be AC_REQUIRED indirectly, it is safer
+to just always use AS_IF.
+
+Signed-off-by: Jan Engelhardt <jengelh@inai.de>
+---
+ configure.ac | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 36ed1d0..8bf5a78 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -18,11 +18,11 @@ AM_MAINTAINER_MODE([enable])
+ GTK_DOC_CHECK([1.11],[--flavour no-tmpl])
+ 
+ AC_ARG_WITH(dbus-sys-dir, AS_HELP_STRING([--with-dbus-sys-dir=DIR], [where D-BUS system.d directory is]))
+-if test -n "$with_dbus_sys_dir" ; then
++AS_IF([test -n "$with_dbus_sys_dir"], [
+     DBUS_SYS_DIR="$with_dbus_sys_dir"
+-else
++], [
+     DBUS_SYS_DIR="/etc/dbus-1/system.d"
+-fi
++])
+ AC_SUBST(DBUS_SYS_DIR)
+ 
+ # paths
+@@ -34,9 +34,9 @@ PKG_PROG_PKG_CONFIG
+ AC_ARG_WITH([systemdsystemunitdir],
+         AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
+         [], [with_systemdsystemunitdir=$($PKG_CONFIG --variable=systemdsystemunitdir systemd)])
+-if test "x$with_systemdsystemunitdir" != xno; then
++AS_IF(["x$with_systemdsystemunitdir" != xno], [
+         AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])
+-fi
++])
+ 
+ AM_CONDITIONAL(HAVE_SYSTEMD, [test -n "$with_systemdsystemunitdir" -a "x$with_systemdsystemunitdir" != xno ])
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,38 @@
+From 38cb4c6052fd54aae28fba05e623537fba2096c2 Mon Sep 17 00:00:00 2001
+From: Mohsin Shariff <mohsin.shariff@intel.com>
+Date: Mon, 2 Mar 2026 11:03:54 +0530
+Subject: [PATCH 41/56] docs: Clarify slider config
+
+docs: Clarify slider config is for Panther Lake and later platforms
+
+[srinivas: Changed PTL to Panther Lake and sign-off of the author]
+Signed-off-by: Mohsin Shariff <mohsin.shariff@intel.com>
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ data/intel_lpmd_config.xml | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/data/intel_lpmd_config.xml b/data/intel_lpmd_config.xml
+index 2ef361a..f9e8876 100644
+--- a/data/intel_lpmd_config.xml
++++ b/data/intel_lpmd_config.xml
+@@ -102,5 +102,16 @@ for Intel Energy Optimizer (LPMD) daemon
+ 	-->
+ 	<IgnoreITMT>0</IgnoreITMT>
+ 
++	<!--
++		Slider default configuration for AC and DC (for platforms after Panther Lake onwards)
++		These are default values used when platform-specific configs are unavailable.
++		AC: Plugged into power adapter
++		DC: Running on battery
++	-->
++	<BalancedSliderAC>1</BalancedSliderAC>
++	<BalancedSliderDC>3</BalancedSliderDC>
++	<SliderOffsetAC>0</SliderOffsetAC>
++	<SliderOffsetDC>3</SliderOffsetDC>
++
+ </Configuration>
+ 
+-- 
+2.55.0
+

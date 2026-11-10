@@ -1,0 +1,82 @@
+From 256ae2ba3ec0847b2a5f570509f7eccefb19ad45 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Tue, 31 Mar 2026 22:51:43 +0200
+Subject: [PATCH 09/56] lpmd_state_machine: Fix deadlock on power profile
+ switch
+
+If one profile, let's say the balanced one, is set to enable AUTO LPMD,
+and another one like the performance one, has LPMD OFF, then a deadlock
+might happen when using the wlt proxy system. Basically when going into
+the OFF state, polling gets disabled and there is no specific code flow
+to get it enabled again after switching back to an AUTO state.
+
+This only affects the wlt proxy as other polling and non-polling systems
+seem to be able to get themselves back up again.
+
+Reinitialize the polling interval when switching power profiles.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/include/lpmd.h       | 2 ++
+ src/lpmd_proc.c          | 5 ++++-
+ src/lpmd_state_machine.c | 8 ++++++++
+ 3 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index 6319a41..447ffdd 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -284,6 +284,8 @@ enum power_profile_daemon_mode {
+ 	PPD_INVALID
+ };
+ 
++#define DEF_POLLING_INTERVAL	100
++
+ /* lpmd_main.c */
+ int in_debug_mode(void);
+ int do_platform_check(void);
+diff --git a/src/lpmd_proc.c b/src/lpmd_proc.c
+index e6d2445..450b890 100644
+--- a/src/lpmd_proc.c
++++ b/src/lpmd_proc.c
+@@ -150,6 +150,9 @@ static void power_profiles_changed_cb(void)
+ 		} else {
+ 			lpmd_log_warn("Ignore unsupported power profile: %s\n", active_profile);
+ 		}
++
++		if (lpmd_config.wlt_proxy_enable)
++			lpmd_config.data.polling_interval = DEF_POLLING_INTERVAL;
+ 	}
+ }
+ 
+@@ -300,7 +303,7 @@ static void* lpmd_core_main_loop(void *arg)
+ {
+ 	int n;
+ 
+-	lpmd_config.data.polling_interval = 100;
++	lpmd_config.data.polling_interval = DEF_POLLING_INTERVAL;
+ 
+ 	for (;;) {
+ 
+diff --git a/src/lpmd_state_machine.c b/src/lpmd_state_machine.c
+index 1f40c02..9e7bcf2 100644
+--- a/src/lpmd_state_machine.c
++++ b/src/lpmd_state_machine.c
+@@ -396,6 +396,14 @@ int lpmd_enter_next_state(void)
+ 	}
+ 
+ 	idx = choose_next_state(config);
++
++	/*
++	 * After switching power profiles polling gets disabled and needs to be
++	 * updated.
++	 */
++	if (config->data.polling_interval == -1 && polling_enabled && idx != DEFAULT_OFF)
++		get_config_state_interval(config, idx);
++
+ 	/* No action needed, keep previous idx and interval */
+ 	if (idx == STATE_NONE)
+ 		goto end;
+-- 
+2.55.0
+
