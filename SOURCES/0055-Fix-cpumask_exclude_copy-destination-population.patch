@@ -1,0 +1,34 @@
+From df3a7214656e66972c9bec68fa937fbae4bfb633 Mon Sep 17 00:00:00 2001
+From: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+Date: Thu, 28 May 2026 16:53:07 -0700
+Subject: [PATCH 55/56] Fix cpumask_exclude_copy destination population
+
+cpumask_exclude_copy() reset the destination mask and filtered
+excluded CPUs, but never added the remaining CPUs to the destination.
+That left the result empty for the HFI banned-CPU path.
+
+Add the missing cpumask_add_cpu() call so CPUMASK_HFI is built as
+online CPUs minus banned CPUs, and the resulting mask can be applied
+correctly by the HFI state flow.
+
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ src/lpmd_cpumask.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/lpmd_cpumask.c b/src/lpmd_cpumask.c
+index fc87371..6b70fed 100644
+--- a/src/lpmd_cpumask.c
++++ b/src/lpmd_cpumask.c
+@@ -357,6 +357,8 @@ void cpumask_exclude_copy(enum cpumask_idx source, enum cpumask_idx dest, enum c
+ 
+ 		if (CPU_ISSET_S(i, size_cpumask, cpumasks[exclude].mask))
+ 			continue;
++
++		cpumask_add_cpu(i, dest);
+ 	}
+ }
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,43 @@
+From 1eea93c6f96ca435161101f685345383ea6d8f18 Mon Sep 17 00:00:00 2001
+From: Mohsin Shariff <mohsin.shariff@intel.com>
+Date: Fri, 27 Feb 2026 20:25:31 +0530
+Subject: [PATCH 40/56] Enable platform-agnostic config fallback for unknown
+ platforms
+
+- Remove hard platform whitelist check failure (return -1)
+- Unknown platforms now continue to config loading instead of exiting
+- Allows fallback to generic intel_lpmd_config.xml for unsupported models
+- Improves daemon robustness for new/preview platforms like M213
+- Updated log messages to indicate fallback attempt
+
+[srinivas: Fixed log message and sign-off of the author]
+Signed-off-by: Mohsin Shariff <mohsin.shariff@intel.com>
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ src/lpmd_cpu.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/src/lpmd_cpu.c b/src/lpmd_cpu.c
+index bb3ecd3..9080584 100644
+--- a/src/lpmd_cpu.c
++++ b/src/lpmd_cpu.c
+@@ -120,14 +120,13 @@ int detect_supported_platform(lpmd_config_t *lpmd_config)
+ 
+ 	/* Unsupported model */
+ 	if (!id_table[val].family) {
+-		lpmd_log_info("Platform not supported yet.\n");
+-		lpmd_log_debug("Supported platforms:\n");
++		lpmd_log_info("Platform model %d not in supported platform list. Attempt fallback to generic config.\n", model);
++		lpmd_log_debug("Supported platforms (with optimized configs):\n");
+ 		val = 0;
+ 		while (id_table[val].family) {
+ 			lpmd_log_debug("\tfamily %d model %d\n", id_table[val].family, id_table[val].model);
+ 			val++;
+ 		}
+-		return -1;
+ 	}
+ 
+ end:
+-- 
+2.55.0
+

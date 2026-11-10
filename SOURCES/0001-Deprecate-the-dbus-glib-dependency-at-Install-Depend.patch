@@ -1,0 +1,33 @@
+From 48fc07ee76506f8412f5770116d19a337254caf3 Mon Sep 17 00:00:00 2001
+From: Bin Li <libin3479@gmail.com>
+Date: Fri, 19 Dec 2025 22:23:18 +0800
+Subject: [PATCH 01/56] Deprecate the dbus-glib dependency at Install
+ Dependencies
+
+---
+ README.md | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/README.md b/README.md
+index 292ee76..d65ae0d 100644
+--- a/README.md
++++ b/README.md
+@@ -17,13 +17,13 @@ man intel_lpmd_config.xml
+ ### Fedora
+ 
+ ```sh
+-dnf install automake autoconf-archive gcc glib2-devel dbus-glib-devel libxml2-devel libnl3-devel systemd-devel gtk-doc upower-devel
++dnf install automake autoconf-archive gcc glib2-devel libxml2-devel libnl3-devel systemd-devel gtk-doc upower-devel
+ ```
+ 
+ ### Ubuntu
+ 
+ ```sh
+-sudo apt install autoconf autoconf-archive gcc libglib2.0-dev libdbus-1-dev libdbus-glib-1-dev libxml2-dev libnl-3-dev libnl-genl-3-dev libsystemd-dev gtk-doc-tools libupower-glib-dev
++sudo apt install autoconf autoconf-archive gcc libglib2.0-dev libdbus-1-dev libxml2-dev libnl-3-dev libnl-genl-3-dev libsystemd-dev gtk-doc-tools libupower-glib-dev
+ ```
+ 
+ ### OpenSUSE
+-- 
+2.55.0
+

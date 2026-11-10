@@ -1,0 +1,83 @@
+From 8c175e8db8259ed041a7826269521cef5029b474 Mon Sep 17 00:00:00 2001
+From: Joy Philip Pilli <joyphilip.p2001@gmail.com>
+Date: Fri, 24 Apr 2026 20:02:49 +0530
+Subject: [PATCH 24/56] fix: prevent cgroup isolation churn during WLT polling
+
+When changing state with cgroup isolation mode enabled,
+cpuset.cpus.partition is set to member state temporarily. Then the
+exclusive cpus value is written and partition is changed to isolated
+again. When partition is in member state temporarily tasks can get
+scheduled briefly on cpus that should be isolated and not used. When
+states change quickly this can happen quite often and will decrease
+efficiency.
+
+Don't update the cgroups if the final cpu masks will be the same,
+thereby optimizing for the inefficiency mentioned above.
+
+Signed-off-by: Joy Philip Pilli <joyphilip.p2001@gmail.com>
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/lpmd_cgroup.c | 28 +++++++++++++++++++++++-----
+ 1 file changed, 23 insertions(+), 5 deletions(-)
+
+diff --git a/src/lpmd_cgroup.c b/src/lpmd_cgroup.c
+index 5b53179..e4396c7 100644
+--- a/src/lpmd_cgroup.c
++++ b/src/lpmd_cgroup.c
+@@ -170,6 +170,8 @@ static int process_cpu_cgroupv2(lpmd_config_state_t *state)
+ 	}
+ }
+ 
++static enum cpumask_idx last_applied_cpumask = CPUMASK_NONE;
++
+ /* Support for cgroup based cpu isolation */
+ static int process_cpu_isolate(lpmd_config_state_t *state)
+ {
+@@ -193,7 +195,10 @@ static int process_cpu_isolate(lpmd_config_state_t *state)
+ 
+ int cgroup_cleanup(void)
+ {
+-	DIR *dir = opendir("/sys/fs/cgroup/lpm");
++	DIR *dir;
++
++	last_applied_cpumask = CPUMASK_NONE;
++	*dir = opendir("/sys/fs/cgroup/lpm");
+ 	if (dir) {
+ 		closedir(dir);
+ 		rmdir("/sys/fs/cgroup/lpm");
+@@ -213,15 +218,28 @@ int cgroup_init(lpmd_config_t *config)
+ 
+ int process_cgroup(lpmd_config_state_t *state, enum lpm_cpu_process_mode mode)
+ {
++	int ret;
++
+ 	if (state->cpumask_idx == CPUMASK_NONE) {
+ 		lpmd_log_debug ("Ignore cgroup processing\n");
+ 		return 0;
+ 	}
+ 
++	if (last_applied_cpumask != CPUMASK_NONE &&
++	    cpumask_equal(state->cpumask_idx, last_applied_cpumask)) {
++		lpmd_log_debug("Skip cgroup: cpumask unchanged\n");
++		return 0;
++	}
++
+ 	lpmd_log_info ("Process Cgroup ...\n");
+ 	if (mode == LPM_CPU_CGROUPV2)
+-		return process_cpu_cgroupv2(state);
+-	if (mode == LPM_CPU_ISOLATE)
+-		return process_cpu_isolate(state);
+-	return 0;
++		ret = process_cpu_cgroupv2(state);
++	else if (mode == LPM_CPU_ISOLATE)
++		ret = process_cpu_isolate(state);
++	else
++		ret = 0;
++
++	if (!ret)
++		last_applied_cpumask = state->cpumask_idx;
++	return ret;
+ }
+-- 
+2.55.0
+

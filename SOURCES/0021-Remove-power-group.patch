@@ -1,0 +1,30 @@
+From ba2ad5431881f7fc0ee4b5ab9a3f14ec9126c032 Mon Sep 17 00:00:00 2001
+From: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+Date: Sun, 12 Apr 2026 16:57:14 -0700
+Subject: [PATCH 21/56] Remove power group
+
+There is no use case of special power group to send message to LPMD.
+Allow only root users.
+
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ data/org.freedesktop.intel_lpmd.conf | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/data/org.freedesktop.intel_lpmd.conf b/data/org.freedesktop.intel_lpmd.conf
+index 239004b..f06fd34 100644
+--- a/data/org.freedesktop.intel_lpmd.conf
++++ b/data/org.freedesktop.intel_lpmd.conf
+@@ -16,9 +16,5 @@
+                 <deny send_destination="org.freedesktop.intel_lpmd"/>
+                 <allow receive_sender="org.freedesktop.intel_lpmd"/>
+         </policy>
+-        <policy group="power">
+-                <allow send_destination="org.freedesktop.intel_lpmd"/>
+-                <allow receive_sender="org.freedesktop.intel_lpmd"/>
+-        </policy>
+ 
+ </busconfig>
+-- 
+2.55.0
+

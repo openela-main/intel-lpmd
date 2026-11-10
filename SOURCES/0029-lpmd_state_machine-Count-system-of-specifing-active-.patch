@@ -1,0 +1,262 @@
+From ee708ab0d546fbbc7f55437ae4a4126c5c706805 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Fri, 12 Dec 2025 18:00:32 +0100
+Subject: [PATCH 29/56] lpmd_state_machine: Count system of specifing active
+ cores
+
+Instead of supplying the specific cpu core indices in the ActiveCpus
+tags in the configuration it would be more convenient to only put down
+the desired number of cores of a specific type / types.
+
+Add a simple system of core type bitmasks from which the program can
+later derive cpumasks based on the usage of ActiveP/E/Lcores in the
+configuration states.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/include/lpmd.h         | 15 +++++++++++
+ src/lpmd_cpu.c             | 14 +++++++---
+ src/lpmd_cpumask.c         | 35 +++++++++++++++++++++++++
+ src/lpmd_state_machine.c   | 52 +++++++++++++++++++++++++++++++++++---
+ src/wlt_proxy/state_util.c |  6 -----
+ 5 files changed, 109 insertions(+), 13 deletions(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index f3701df..3bb8fb9 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -108,6 +108,7 @@ typedef struct {
+ #define MAX_CONFIG_STATES	10
+ #define MAX_STATE_NAME		32
+ #define MAX_CONFIG_LEN		64
++#define MAX_CPUS		64
+ 
+ enum lpmd_states {
+ 	LPMD_OFF,
+@@ -144,6 +145,13 @@ enum default_config_state {
+ 	STATE_NONE = MAX_STATES,
+ };
+ 
++#define CORE_TYPES_COUNT 3
++enum core_type {
++	P_CORE,
++	E_CORE,
++	L_CORE
++};
++
+ typedef struct {
+ 	int id;
+ 	int valid;
+@@ -183,6 +191,10 @@ typedef struct {
+ 	int steady;
+ }lpmd_config_state_t;
+ 
++struct core_masks_t {
++	unsigned char cmask[CORE_TYPES_COUNT][MAX_CPUS / 8];
++};
++
+ // lpmd config data
+ typedef struct {
+ 	int mode;
+@@ -219,6 +231,8 @@ typedef struct {
+ 	int config_state_count;
+ 	int tdp;
+ 
++	struct core_masks_t core_type_masks;
++
+ 	int balance_slider_def_ac;
+ 	int slider_offset_def_ac;
+ 	int balance_slider_def_dc;
+@@ -380,6 +394,7 @@ int cpumask_reset(enum cpumask_idx idx);
+ 
+ int cpumask_add_cpu(int cpu, enum cpumask_idx idx);
+ int cpumask_init_cpus(char *buf, enum cpumask_idx idx);
++int cpumask_init_cpus_type(int count, enum cpumask_idx idx, struct core_masks_t *cmasks, enum core_type type);
+ int cpumask_nr_cpus(enum cpumask_idx idx);
+ int cpumask_has_cpu(enum cpumask_idx idx);
+ 
+diff --git a/src/lpmd_cpu.c b/src/lpmd_cpu.c
+index e611b78..d71ca6c 100644
+--- a/src/lpmd_cpu.c
++++ b/src/lpmd_cpu.c
+@@ -341,15 +341,23 @@ int detect_cpu_topo(lpmd_config_t *lpmd_config)
+ 	/* Here it is the first time we migrate CPUs, must clear the previous cgroup settings */
+ 	cgroup_cleanup();
+ 
++	memset(lpmd_config->core_type_masks.cmask[0], 0, CORE_TYPES_COUNT * MAX_CPUS / 8);
++
+ 	for (i = 0; i < get_max_cpus(); i++) {
+ 		if (!is_cpu_online(i))
+ 			continue;
+-		if (is_cpu_pcore(i))
++		if (is_cpu_pcore(i)) {
+ 			pcores++;
+-		else if (is_cpu_ecore(i))
++			lpmd_config->core_type_masks.cmask[P_CORE][i / 8] |= 1 << (i % 8);
++		}
++		else if (is_cpu_ecore(i)) {
+ 			ecores++;
+-		else if (is_cpu_lcore(i))
++			lpmd_config->core_type_masks.cmask[E_CORE][i / 8] |= 1 << (i % 8);
++		}
++		else if (is_cpu_lcore(i)) {
+ 			lcores++;
++			lpmd_config->core_type_masks.cmask[L_CORE][i / 8] |= 1 << (i % 8);
++		}
+ 	}
+ 
+ 	tdp = get_tdp();
+diff --git a/src/lpmd_cpumask.c b/src/lpmd_cpumask.c
+index 7de08e5..d110703 100644
+--- a/src/lpmd_cpumask.c
++++ b/src/lpmd_cpumask.c
+@@ -177,6 +177,41 @@ int cpumask_add_cpu(int cpu, enum cpumask_idx idx)
+ 	return LPMD_SUCCESS;
+ }
+ 
++static unsigned int get_next_cpu_cmask(unsigned int id, enum core_type type, unsigned char *cmask)
++{
++	bool ret;
++	int i;
++
++	for (i = id ; i < MAX_CPUS ; i++) {
++		ret = !!(cmask[i / 8] & (1 << (i % 8)));
++		if (ret)
++			return i;
++	}
++	return id;
++}
++
++
++int cpumask_init_cpus_type(int count, enum cpumask_idx idx, struct core_masks_t *cmasks, enum core_type type)
++{
++	unsigned int current, next;
++	int nr_cpus = 0;
++
++	if (!count)
++		return 0;
++
++	current = get_next_cpu_cmask(0, type, cmasks->cmask[type]);
++	while(nr_cpus != count) {
++		cpumask_add_cpu(current, idx);
++		next = get_next_cpu_cmask(current + 1, type, cmasks->cmask[type]);
++		if(next == current) /* Couldn't find next core of the provided type */
++			return nr_cpus;
++		nr_cpus++;
++		current = next;
++	}
++
++	return nr_cpus;
++}
++
+ int cpumask_init_cpus(char *buf, enum cpumask_idx idx)
+ {
+ 	unsigned int start, end;
+diff --git a/src/lpmd_state_machine.c b/src/lpmd_state_machine.c
+index c5b2f98..22fd997 100644
+--- a/src/lpmd_state_machine.c
++++ b/src/lpmd_state_machine.c
+@@ -607,7 +607,11 @@ static int config_states_update_config(lpmd_config_t *config)
+ }
+ 
+ 
+-static int build_state_cpumask(lpmd_config_state_t *state)
++/*
++ * Return 0 on success - either when nothing requires setting up Return -1 on error
++ * and -2 if there are no active cpus specified.
++ */
++static int build_state_cpumask_activecpus(lpmd_config_state_t *state)
+ {
+ 	state->steady = 1;
+ 
+@@ -615,7 +619,7 @@ static int build_state_cpumask(lpmd_config_state_t *state)
+ 		return 0;
+ 
+ 	if (state->active_cpus[0] == '\0')
+-		return 0;
++		return -2;
+ 
+ 	if (!strncmp(state->active_cpus, "all", sizeof("all")) ||
+ 	    !strncmp(state->active_cpus, "ALL", sizeof("ALL"))) {
+@@ -651,19 +655,59 @@ static int build_state_cpumask(lpmd_config_state_t *state)
+ 	return 0;
+ }
+ 
++static int build_state_cpumask_cputypes(lpmd_config_state_t *state, struct core_masks_t *cmasks)
++{
++	int ret;
++
++	if (state->cpumask_idx != CPUMASK_NONE)
++		return 0;
++
++	state->cpumask_idx = cpumask_alloc();
++	if (state->cpumask_idx == CPUMASK_NONE) {
++		lpmd_log_error("Cannot alloc CPUMASK\n");
++		return -1;
++	}
++
++	/* Setup the specified P-cores */
++	ret = cpumask_init_cpus_type(state->active_p_cores, state->cpumask_idx, cmasks, P_CORE);
++	if (ret < 0) {
++		cpumask_free(state->cpumask_idx);
++		return -1;
++	}
++
++	/* Setup the specified E-cores */
++	ret = cpumask_init_cpus_type(state->active_e_cores, state->cpumask_idx, cmasks, E_CORE);
++	if (ret < 0) {
++		cpumask_free(state->cpumask_idx);
++		return -1;
++	}
++
++	/* Setup the specified L-cores */
++	ret = cpumask_init_cpus_type(state->active_l_cores, state->cpumask_idx, cmasks, L_CORE);
++	if (ret < 0) {
++		cpumask_free(state->cpumask_idx);
++		return -1;
++	}
++
++	return 0;
++}
++
+ #define DEFAULT_POLL_RATE_MS	1000
+ 
+ int lpmd_build_config_states(lpmd_config_t *lpmd_config)
+ {
+ 	lpmd_config_state_t *state;
+-	int i;
++	int ret, i;
+ 
+ 	build_default_states(lpmd_config);
+ 
+ 	for (i = CONFIG_STATE_BASE; i < CONFIG_STATE_BASE + lpmd_config->config_state_count; i++) {
+ 		state = &lpmd_config->config_states[i];
+ 
+-		if (build_state_cpumask(state))
++		ret = build_state_cpumask_activecpus(state);
++		if (ret == -2)
++			build_state_cpumask_cputypes(state, &lpmd_config->core_type_masks);
++		else if (ret)
+ 			continue;
+ 
+ 		if (state->entry_system_load_thres || state->enter_cpu_load_thres || state->enter_gfx_load_thres)
+diff --git a/src/wlt_proxy/state_util.c b/src/wlt_proxy/state_util.c
+index f35242e..d937d5f 100644
+--- a/src/wlt_proxy/state_util.c
++++ b/src/wlt_proxy/state_util.c
+@@ -42,12 +42,6 @@
+ 
+ static int sample[3][SMA_LENGTH];
+ 
+-enum core_type {
+-    P_CORE = 1,
+-    E_CORE = 2,
+-    L_CORE = 3
+-};
+-
+ typedef struct {
+ 
+     int cpu;
+-- 
+2.55.0
+

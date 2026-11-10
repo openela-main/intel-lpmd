@@ -1,0 +1,230 @@
+From 3d269dadacc56e4db587dad6f4299ad72c247fee Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Wed, 17 Dec 2025 20:24:10 +0100
+Subject: [PATCH 36/56] lpmd_config: Skip platform check if a matching config
+ file exists
+
+A platform that's not added to the model list in the source code is
+discarded early when launching the program.
+
+For easier scaling it's beneficial to accept platforms that have a
+matching configuration file in the appropriate directory.
+
+Skip matching the platform model to the source code defined list of
+supported models if a matching config file exists.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+[srinivas: Fix coverity error for uninitialized file_name]
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ src/include/lpmd.h |  4 ++++
+ src/lpmd_config.c  | 60 ++++++++++++++++++++++++++++++++++++----------
+ src/lpmd_cpu.c     | 27 +++++++++++++++------
+ 3 files changed, 71 insertions(+), 20 deletions(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index f13fcb8..cf9a4fd 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -105,6 +105,7 @@ typedef struct {
+ } message_capsul_t;
+ 
+ #define MAX_STR_LENGTH		256
++#define MAX_FILE_NAME_PATH	128
+ #define MAX_CONFIG_STATES	10
+ #define MAX_STATE_NAME		32
+ #define MAX_CONFIG_LEN		64
+@@ -227,6 +228,7 @@ typedef struct {
+ 	char cpu_config[MAX_CONFIG_LEN];
+ 	int config_state_count;
+ 	int tdp;
++	char file_name[MAX_FILE_NAME_PATH];
+ 
+ 	int balance_slider_def_ac;
+ 	int slider_offset_def_ac;
+@@ -319,6 +321,7 @@ void update_reason(int reason);
+ int intel_dbus_server_init(gboolean (*exit_handler)(void));
+ 
+ /* lpmd_config.c */
++int match_config_file(int family, int model, int tdp, char *save_file_name);
+ int lpmd_get_config(lpmd_config_t *lpmd_config);
+ 
+ /* lpmd_state_machine.c */
+@@ -372,6 +375,7 @@ int check_cpu_hotplug(void);
+ int detect_supported_platform(lpmd_config_t *lpmd_config);
+ int detect_cpu_topo(lpmd_config_t *lpmd_config);
+ int detect_lpm_cpus(char *cmd_cpus);
++int get_tdp(void);
+ 
+ int is_cpu_ecore(int cpu);
+ int is_cpu_pcore(int cpu);
+diff --git a/src/lpmd_config.c b/src/lpmd_config.c
+index b459651..f9179cb 100644
+--- a/src/lpmd_config.c
++++ b/src/lpmd_config.c
+@@ -23,7 +23,6 @@
+ #include <libxml/tree.h>
+ 
+ #define CONFIG_FILE_NAME "intel_lpmd_config.xml"
+-#define MAX_FILE_NAME_PATH	128
+ 
+ static void save_string_or_zero(char * tmp_value, char * dst_string, int dest_size)
+ {
+@@ -428,31 +427,64 @@ err:			xmlFree (tmp_value);
+ 	return LPMD_SUCCESS;
+ }
+ 
+-int lpmd_get_config(lpmd_config_t *lpmd_config)
++int match_config_file(int family, int model, int tdp, char *save_file_name)
+ {
+ 	char file_name[MAX_FILE_NAME_PATH];
++	struct stat s;
++	int ret;
++
++	snprintf(file_name, MAX_FILE_NAME_PATH,
++		 "%s/intel_lpmd_config_F%d_M%d_T%d.xml", TDCONFDIR, family,
++		 model, tdp);
++
++	lpmd_log_msg ("Looking for config file %s\n", file_name);
++	ret = stat (file_name, &s);
++	if (!ret) {
++		strncpy(save_file_name, file_name, MAX_FILE_NAME_PATH);
++		return ret;
++	}
++
++	snprintf(file_name, MAX_FILE_NAME_PATH,
++		 "%s/intel_lpmd_config_F%d_M%d.xml", TDCONFDIR, family, model);
++
++	lpmd_log_msg("Looking for config file %s\n", file_name);
++
++	ret = stat(file_name, &s);
++	if (!ret) {
++		strncpy(save_file_name, file_name, MAX_FILE_NAME_PATH);
++		return ret;
++	}
++
++	return ret;
++}
++
++int lpmd_get_config(lpmd_config_t *lpmd_config)
++{
++	char file_name_str[MAX_FILE_NAME_PATH];
+ 	xmlNode *root_element;
+ 	xmlNode *cur_node;
++	char *file_name;
+ 	struct stat s;
+ 	xmlDoc *doc;
+ 
+ 	if (!lpmd_config)
+ 		return LPMD_ERROR;
+ 
+-
+-	snprintf(file_name, MAX_FILE_NAME_PATH, "%s/intel_lpmd_config_F%d_M%d_T%d.xml",
+-			 TDCONFDIR, lpmd_config->cpu_family, lpmd_config->cpu_model, lpmd_config->tdp);
+-
+-	lpmd_log_msg ("Looking for config file %s\n", file_name);
+-	if (!stat (file_name, &s))
++	/*
++	 * If a config file was already found skip looking for it the second
++	 * time.
++	 */
++	if (strcmp(lpmd_config->file_name, "")) {
++		file_name = lpmd_config->file_name;
+ 		goto process_xml;
++	}
+ 
+-	snprintf(file_name, MAX_FILE_NAME_PATH, "%s/intel_lpmd_config_F%d_M%d.xml",
+-			 TDCONFDIR, lpmd_config->cpu_family, lpmd_config->cpu_model);
+-	lpmd_log_msg ("Looking for config file %s\n", file_name);
+-	if (!stat (file_name, &s))
+-		goto process_xml;
++	file_name = file_name_str;
+ 
++	/*
++	 * If a model specific config file was not found use the generic
++	 * config file.
++	 */
+ 	snprintf (file_name, MAX_FILE_NAME_PATH, "%s/%s", TDCONFDIR, CONFIG_FILE_NAME);
+ 
+ 	lpmd_log_msg ("Reading configuration file %s\n", file_name);
+@@ -462,6 +494,8 @@ int lpmd_get_config(lpmd_config_t *lpmd_config)
+ 		return LPMD_ERROR;
+ 	}
+ 
++	strncpy(lpmd_config->file_name, file_name, MAX_FILE_NAME_PATH - 1);
++
+ process_xml:
+ 	doc = xmlReadFile (file_name, NULL, 0);
+ 	if (doc == NULL) {
+diff --git a/src/lpmd_cpu.c b/src/lpmd_cpu.c
+index 4eb1ab6..bb3ecd3 100644
+--- a/src/lpmd_cpu.c
++++ b/src/lpmd_cpu.c
+@@ -49,7 +49,8 @@ static struct cpu_model_entry id_table[] = {
+ int detect_supported_platform(lpmd_config_t *lpmd_config)
+ {
+ 	unsigned int eax, ebx, ecx, edx;
+-	unsigned int max_level, family, model, stepping;
++	unsigned int max_level, family, model, stepping, tdp;
++	char file_name[MAX_FILE_NAME_PATH] = "\0";
+ 	int val;
+ 
+ 	cpuid(0, eax, ebx, ecx, edx);
+@@ -69,9 +70,16 @@ int detect_supported_platform(lpmd_config_t *lpmd_config)
+ 	if (family == 6)
+ 		model += ((eax >> 16) & 0xf) << 4;
+ 
++	tdp = get_tdp();
++
+ 	lpmd_log_info("%u CPUID levels; family:model:stepping 0x%x:%x:%x (%u:%u:%u)\n",
+ 			max_level, family, model, stepping, family, model, stepping);
+ 
++	if (!match_config_file(family, model, tdp, file_name)) {
++		lpmd_log_info("Found a config file matching the platform model - skipping platform check\n");
++		goto end;
++	}
++
+ 	if (!do_platform_check()) {
+ 		lpmd_log_info("Ignore platform check\n");
+ 		goto end;
+@@ -125,6 +133,11 @@ int detect_supported_platform(lpmd_config_t *lpmd_config)
+ end:
+ 	lpmd_config->cpu_family = family;
+ 	lpmd_config->cpu_model = model;
++	lpmd_config->tdp = tdp;
++	if (file_name[0] != '\0')
++		strncpy(lpmd_config->file_name, file_name, MAX_FILE_NAME_PATH);
++	else
++		lpmd_config->file_name[0] = '\0';
+ 
+ 	return 0;
+ }
+@@ -206,7 +219,7 @@ int is_cpu_lcore(int cpu)
+ }
+ 
+ #define PATH_RAPL	"/sys/class/powercap"
+-static int get_tdp(void)
++int get_tdp(void)
+ {
+ 	FILE *filep;
+ 	DIR *dir;
+@@ -368,11 +381,11 @@ int detect_cpu_topo(lpmd_config_t *lpmd_config)
+ 		}
+ 	}
+ 
+-	tdp = get_tdp();
+-	lpmd_log_info("Detected %d Pcores, %d Ecores, %d Lcores, TDP %dW\n", pcores, ecores, lcores, tdp);
+-	ret = snprintf(lpmd_config->cpu_config, MAX_CONFIG_LEN - 1, " %dP%dE%dL-%dW ", pcores, ecores, lcores, tdp);
+-
+-	lpmd_config->tdp = tdp;
++	lpmd_log_info("Detected %d Pcores, %d Ecores, %d Lcores, TDP %dW\n",
++		      pcores, ecores, lcores, lpmd_config->tdp);
++	ret = snprintf(lpmd_config->cpu_config, MAX_CONFIG_LEN - 1,
++		       " %dP%dE%dL-%dW ", pcores, ecores, lcores,
++		       lpmd_config->tdp);
+ 
+ 	return 0;
+ }
+-- 
+2.55.0
+

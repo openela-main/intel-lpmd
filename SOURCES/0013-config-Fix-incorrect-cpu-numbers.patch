@@ -1,0 +1,46 @@
+From bb67af59b038ea965c93a1ec8b184f5ab167d2c6 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Fri, 12 Dec 2025 13:49:25 +0100
+Subject: [PATCH 13/56] config: Fix incorrect cpu numbers
+
+The cpu name in the config file is described as having 16 cores while
+the specific tags in the config file try to enable higher core indices
+than 16.
+
+Correct the indices.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ data/intel_lpmd_config_F6_M204.xml | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/data/intel_lpmd_config_F6_M204.xml b/data/intel_lpmd_config_F6_M204.xml
+index ba5d4e4..a67fa8b 100644
+--- a/data/intel_lpmd_config_F6_M204.xml
++++ b/data/intel_lpmd_config_F6_M204.xml
+@@ -146,19 +146,19 @@ for Intel Energy Optimizer (LPMD) daemon
+ 			<ID> 1 </ID>
+ 			<Name> UTIL_IDLE </Name>
+ 			<WLTType> 1 </WLTType>
+-			<ActiveCPUs>16-19</ActiveCPUs>
++			<ActiveCPUs>12-15</ActiveCPUs>
+ 		</State>
+ 		<State>
+ 			<ID> 2 </ID>
+ 			<Name> UTIL_IDLE_SUSTAIN </Name>
+ 			<WLTType> 2 </WLTType>
+-			<ActiveCPUs>0-19</ActiveCPUs>
++			<ActiveCPUs>0-15</ActiveCPUs>
+ 		</State>
+ 		<State>
+ 			<ID> 3 </ID>
+ 			<Name> UTIL_IDLE_BURSTY </Name>
+ 			<WLTType> 3 </WLTType>
+-			<ActiveCPUs>0-19</ActiveCPUs>
++			<ActiveCPUs>0-15</ActiveCPUs>
+ 		</State>
+ 	</States>
+ 
+-- 
+2.55.0
+

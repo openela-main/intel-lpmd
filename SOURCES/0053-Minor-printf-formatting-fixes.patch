@@ -1,0 +1,42 @@
+From ca4a67ede41f896407946c56563d56ad4c136682 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Tue, 19 May 2026 15:44:01 +0200
+Subject: [PATCH 53/56] Minor printf formatting fixes
+
+Two small bugs for formatting found by copilot.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/lpmd_helpers.c       | 2 +-
+ src/lpmd_state_machine.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/lpmd_helpers.c b/src/lpmd_helpers.c
+index 3bcd55a..a90df40 100644
+--- a/src/lpmd_helpers.c
++++ b/src/lpmd_helpers.c
+@@ -296,7 +296,7 @@ int lpmd_read_yn(const char *name, int *val, int print_level)
+ 	}
+ 
+ 	if (print_level >= 0)
+-		lpmd_log_debug("%sRead \"%c\" from %s\n", prefix, *val, name);
++		lpmd_log_debug("%sRead \"%d\" from %s\n", prefix, *val, name);
+ 
+ 	return 0;
+ }
+diff --git a/src/lpmd_state_machine.c b/src/lpmd_state_machine.c
+index 833d98d..ed7d4dd 100644
+--- a/src/lpmd_state_machine.c
++++ b/src/lpmd_state_machine.c
+@@ -250,7 +250,7 @@ static void dump_state(struct lpmd_config_state_t *state, char *str, int debug)
+ 	offset += snprintf(buf + offset, MAX_STR_LENGTH - offset,
+ 			   "SliderAC [%d] ", state->balance_slider_ac);
+ 	offset += snprintf(buf + offset, MAX_STR_LENGTH - offset,
+-			   "SliderDC [%d] ", state->balance_slider_ac);
++			   "SliderDC [%d] ", state->balance_slider_dc);
+ 	offset += snprintf(buf + offset, MAX_STR_LENGTH - offset,
+ 			   "OffsetAC [%d] ", state->slider_offset_ac);
+ 	offset += snprintf(buf + offset, MAX_STR_LENGTH - offset,
+-- 
+2.55.0
+

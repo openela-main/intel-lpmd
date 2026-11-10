@@ -1,0 +1,35 @@
+From 720cf64206367b0e9857e49b7a59f9df3a963261 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Tue, 7 Apr 2026 20:31:53 +0200
+Subject: [PATCH 15/56] readme: Emphasize expectations from the user
+
+Make clear how to start the program to avoid confusion around the
+default behavior.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ README.md | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/README.md b/README.md
+index e446ee2..fb420e8 100644
+--- a/README.md
++++ b/README.md
+@@ -7,7 +7,13 @@ the system into Low Power Mode by activating the power-efficient CPUs and
+ disabling the rest, and restores the system from Low Power Mode by activating
+ all CPUs.
+ 
+-## Usage
++## Before You Start
++
++**Please note** that the installed configuration files serve as templates of
++best practices for specific platform models and disable lpmd by default. For
++LPMD to start the user is expected to either edit the main
++"intel_lpmd_config.xml" config file or after starting the program, enable LPMD
++by using the intel_lpmd_control tool.
+ 
+ Refer to the man pages for command line arguments and XML configurations:
+ 
+-- 
+2.55.0
+

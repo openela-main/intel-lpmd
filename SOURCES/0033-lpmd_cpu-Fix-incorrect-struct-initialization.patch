@@ -1,0 +1,36 @@
+From a9906b1c75cad102c08fa7c6652e1f8f0b91ef65 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Fri, 9 Jan 2026 11:45:16 +0100
+Subject: [PATCH 33/56] lpmd_cpu: Fix incorrect struct initialization
+
+Per cpu type bitmasks are allocated dynamically and therefore need to
+have each pointer separately zeroed out for proper operation.
+
+Previous version of zeroing all bitmasks with one memset worked
+only for statically allocated bitmasks. Every other execution some data
+would be left over in the bitmasks and an incorrect value would be
+displayed.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/lpmd_cpu.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/lpmd_cpu.c b/src/lpmd_cpu.c
+index 1930eab..e57b672 100644
+--- a/src/lpmd_cpu.c
++++ b/src/lpmd_cpu.c
+@@ -346,7 +346,9 @@ int detect_cpu_topo(lpmd_config_t *lpmd_config)
+ 	/* Here it is the first time we migrate CPUs, must clear the previous cgroup settings */
+ 	cgroup_cleanup();
+ 
+-	memset(lpmd_config->core_type_masks[0], 0, CORE_TYPES_COUNT * get_max_cpus() / 8);
++	for (i = 0 ; i < CORE_TYPES_COUNT ; i++) {
++		memset(lpmd_config->core_type_masks[i], 0, get_max_cpus() / 8);
++	}
+ 
+ 	for (i = 0; i < get_max_cpus(); i++) {
+ 		if (!is_cpu_online(i))
+-- 
+2.55.0
+

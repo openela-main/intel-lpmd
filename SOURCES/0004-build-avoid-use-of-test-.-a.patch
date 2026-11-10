@@ -1,0 +1,30 @@
+From 0911dcf1d2350f99f02198bbfb00cc31c317efc5 Mon Sep 17 00:00:00 2001
+From: Jan Engelhardt <jengelh@inai.de>
+Date: Fri, 16 Jan 2026 11:21:27 +0100
+Subject: [PATCH 04/56] build: avoid use of `test ... -a`
+
+The use of `-a` is non-portable, and it has been actively removed
+from POSIX.1-2024
+<https://pubs.opengroup.org/onlinepubs/9799919799/utilities/test.html>.
+
+Signed-off-by: Jan Engelhardt <jengelh@inai.de>
+---
+ configure.ac | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configure.ac b/configure.ac
+index 8bf5a78..4f79d86 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -38,7 +38,7 @@ AS_IF(["x$with_systemdsystemunitdir" != xno], [
+         AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])
+ ])
+ 
+-AM_CONDITIONAL(HAVE_SYSTEMD, [test -n "$with_systemdsystemunitdir" -a "x$with_systemdsystemunitdir" != xno ])
++AM_CONDITIONAL(HAVE_SYSTEMD, [test -n "$with_systemdsystemunitdir" && test "x$with_systemdsystemunitdir" != xno])
+ 
+ # print configuration
+ echo
+-- 
+2.55.0
+

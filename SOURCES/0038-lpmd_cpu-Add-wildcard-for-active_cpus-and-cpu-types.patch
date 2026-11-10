@@ -1,0 +1,72 @@
+From 77a697a502db74ccd3ac727f6729167602451664 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Tue, 10 Feb 2026 13:52:46 +0100
+Subject: [PATCH 38/56] lpmd_cpu: Add wildcard * for active_cpus and cpu types
+
+Allow using the star "*" wildcard operator in the configuration of which
+cpu cores should be used. It's use is synonymous to the "ALL" / "all"
+keywords.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/include/lpmd.h       | 1 +
+ src/lpmd_config.c        | 2 +-
+ src/lpmd_cpumask.c       | 2 +-
+ src/lpmd_state_machine.c | 3 ++-
+ 4 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index cf9a4fd..456e65e 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -323,6 +323,7 @@ int intel_dbus_server_init(gboolean (*exit_handler)(void));
+ /* lpmd_config.c */
+ int match_config_file(int family, int model, int tdp, char *save_file_name);
+ int lpmd_get_config(lpmd_config_t *lpmd_config);
++int is_wildcard(char *str);
+ 
+ /* lpmd_state_machine.c */
+ int update_lpmd_state(int state);
+diff --git a/src/lpmd_config.c b/src/lpmd_config.c
+index f9179cb..8527e94 100644
+--- a/src/lpmd_config.c
++++ b/src/lpmd_config.c
+@@ -114,7 +114,7 @@ static void lpmd_parse_state(xmlDoc *doc, xmlNode *a_node, lpmd_config_t *config
+ 	}
+ }
+ 
+-static int is_wildcard(char *str)
++int is_wildcard(char *str)
+ {
+ 	if (!str)
+ 		return 1;
+diff --git a/src/lpmd_cpumask.c b/src/lpmd_cpumask.c
+index 9d41931..6b9b6a8 100644
+--- a/src/lpmd_cpumask.c
++++ b/src/lpmd_cpumask.c
+@@ -228,7 +228,7 @@ int cpumask_init_cpus_type(char * buf, enum cpumask_idx idx, unsigned char **cma
+ 	int nr_cpus = 0;
+ 	char * end;
+ 
+-	if (!strncmp(buf, "ALL", strlen("ALL")) || !strncmp(buf, "all", strlen("all")))
++	if (!strncmp(buf, "ALL", strlen("ALL")) || !strncmp(buf, "all", strlen("all")) || is_wildcard(buf))
+ 		count = count_cpu_type_cores(cmasks[type]);
+ 	else {
+ 		errno = 0;
+diff --git a/src/lpmd_state_machine.c b/src/lpmd_state_machine.c
+index 593de9e..677dc0d 100644
+--- a/src/lpmd_state_machine.c
++++ b/src/lpmd_state_machine.c
+@@ -638,7 +638,8 @@ static int build_state_cpumask_activecpus(lpmd_config_state_t *state)
+ 		return -2;
+ 
+ 	if (!strncmp(state->active_cpus, "all", sizeof("all")) ||
+-	    !strncmp(state->active_cpus, "ALL", sizeof("ALL"))) {
++	    !strncmp(state->active_cpus, "ALL", sizeof("ALL")) ||
++	    is_wildcard(state->active_cpus)) {
+ 		state->cpumask_idx = CPUMASK_ONLINE;
+ 		return 0;
+ 	}
+-- 
+2.55.0
+

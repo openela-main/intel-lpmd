@@ -1,0 +1,173 @@
+From f3bf1533d8e552e072ba6ce15cf7f217a6655cb8 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Tue, 16 Dec 2025 16:00:18 +0100
+Subject: [PATCH 31/56] lpmd_config: ALL keyword for active P/E/L cores tag
+
+Allow using the 'ALL' keyword to specify all cores of a given type when
+using the ActivePcores/ActiveEcores/ActiveLcores tags.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+[srinivas: Fix coverity error for sizeof(dst_string)]
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ src/include/lpmd.h       |  8 ++++----
+ src/lpmd_config.c        | 22 +++++++++++++---------
+ src/lpmd_cpumask.c       | 30 ++++++++++++++++++++++++------
+ src/lpmd_state_machine.c | 15 +++++++++------
+ 4 files changed, 50 insertions(+), 25 deletions(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index f35b46e..720c822 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -171,9 +171,9 @@ typedef struct {
+ 	char active_cpus[MAX_STR_LENGTH];
+ 	// If active CPUs are specified then
+ 	// the below counts don't matter
+-	int active_p_cores;
+-	int active_e_cores;
+-	int active_l_cores;
++	char active_p_cores[MAX_STR_LENGTH];
++	char active_e_cores[MAX_STR_LENGTH];
++	char active_l_cores[MAX_STR_LENGTH];
+ 
+ 	int itmt_state;
+ 	int irq_migrate;
+@@ -391,7 +391,7 @@ int allocate_cpu_type_masks(lpmd_config_t *lpmd_config);
+ 
+ int cpumask_add_cpu(int cpu, enum cpumask_idx idx);
+ int cpumask_init_cpus(char *buf, enum cpumask_idx idx);
+-int cpumask_init_cpus_type(int count, enum cpumask_idx idx, unsigned char **cmasks, enum core_type type);
++int cpumask_init_cpus_type(char * buf, enum cpumask_idx idx, unsigned char **cmasks, enum core_type type);
+ int cpumask_nr_cpus(enum cpumask_idx idx);
+ int cpumask_has_cpu(enum cpumask_idx idx);
+ 
+diff --git a/src/lpmd_config.c b/src/lpmd_config.c
+index 214f251..7c37375 100644
+--- a/src/lpmd_config.c
++++ b/src/lpmd_config.c
+@@ -25,6 +25,14 @@
+ #define CONFIG_FILE_NAME "intel_lpmd_config.xml"
+ #define MAX_FILE_NAME_PATH	128
+ 
++static void save_string_or_zero(char * tmp_value, char * dst_string, int dest_size)
++{
++	if (!strncmp (tmp_value, "-1", strlen ("-1")))
++		dst_string[0] = '\0';
++	else
++		copy_user_string(tmp_value, dst_string, dest_size);
++}
++
+ static void lpmd_parse_state(xmlDoc *doc, xmlNode *a_node, lpmd_config_t *config, int idx)
+ {
+ 	xmlNode *cur_node = NULL;
+@@ -84,17 +92,13 @@ static void lpmd_parse_state(xmlDoc *doc, xmlNode *a_node, lpmd_config_t *config
+ 		if (!strncmp((const char*)cur_node->name, "IRQMigrate", strlen("IRQMigrate")))
+ 			state->irq_migrate = strtol (tmp_value, &pos, 10);
+ 		if (!strncmp((const char*)cur_node->name, "ActivePcores", strlen("ActivePcores")))
+-			state->active_p_cores = strtol (tmp_value, &pos, 10);
++			save_string_or_zero(tmp_value, state->active_p_cores, sizeof(state->active_p_cores));
+ 		if (!strncmp((const char*)cur_node->name, "ActiveEcores", strlen("ActiveEcores")))
+-			state->active_e_cores = strtol (tmp_value, &pos, 10);
++			save_string_or_zero(tmp_value, state->active_e_cores, sizeof(state->active_e_cores));
+ 		if (!strncmp((const char*)cur_node->name, "ActiveLcores", strlen("ActiveLcores")))
+-			state->active_l_cores = strtol (tmp_value, &pos, 10);
+-		if (!strncmp((const char*)cur_node->name, "ActiveCPUs", strlen("ActiveCPUs"))) {
+-			if (!strncmp (tmp_value, "-1", strlen ("-1")))
+-				state->active_cpus[0] = '\0';
+-			else
+-				copy_user_string(tmp_value, state->active_cpus, sizeof(state->active_cpus));
+-		}
++			save_string_or_zero(tmp_value, state->active_l_cores, sizeof(state->active_l_cores));
++		if (!strncmp((const char*)cur_node->name, "ActiveCPUs", strlen("ActiveCPUs")))
++			save_string_or_zero(tmp_value, state->active_cpus, sizeof(state->active_cpus));
+ 		if (!strncmp((const char*)cur_node->name, "BalanceSliderAC", strlen("BalanceSliderAC")))
+ 			state->balance_slider_ac = strtol (tmp_value, &pos, 10);
+ 		if (!strncmp((const char*)cur_node->name, "SliderOffsetAC", strlen("SliderOffsetAC")))
+diff --git a/src/lpmd_cpumask.c b/src/lpmd_cpumask.c
+index 1dddd23..9d41931 100644
+--- a/src/lpmd_cpumask.c
++++ b/src/lpmd_cpumask.c
+@@ -197,6 +197,18 @@ int allocate_cpu_type_masks(lpmd_config_t *lpmd_config)
+ 	return 0;
+ }
+ 
++static unsigned int count_cpu_type_cores(unsigned char * bitmask)
++{
++	unsigned int count = 0;
++	int i;
++
++	for (i = 0 ; i < get_max_cpus() ; i++) {
++		if (!!(bitmask[i / 8] & (1 << (i % 8))))
++			count++;
++	}
++	return count;
++}
++
+ static unsigned int get_next_cpu_cmask(unsigned int id, enum core_type type, unsigned char *cmask)
+ {
+ 	bool ret;
+@@ -210,14 +222,20 @@ static unsigned int get_next_cpu_cmask(unsigned int id, enum core_type type, uns
+ 	return id;
+ }
+ 
+-
+-int cpumask_init_cpus_type(int count, enum cpumask_idx idx, unsigned char **cmasks, enum core_type type)
++int cpumask_init_cpus_type(char * buf, enum cpumask_idx idx, unsigned char **cmasks, enum core_type type)
+ {
+-	unsigned int current, next;
++	unsigned int current, next, count;
+ 	int nr_cpus = 0;
+-
+-	if (!count)
+-		return 0;
++	char * end;
++
++	if (!strncmp(buf, "ALL", strlen("ALL")) || !strncmp(buf, "all", strlen("all")))
++		count = count_cpu_type_cores(cmasks[type]);
++	else {
++		errno = 0;
++		count = strtol(buf, &end, 10);
++		if (errno || *end != '\0' || !count)
++			return 0;
++	}
+ 
+ 	current = get_next_cpu_cmask(0, type, cmasks[type]);
+ 	while(nr_cpus != count) {
+diff --git a/src/lpmd_state_machine.c b/src/lpmd_state_machine.c
+index a3b69c6..15216c5 100644
+--- a/src/lpmd_state_machine.c
++++ b/src/lpmd_state_machine.c
+@@ -109,9 +109,9 @@ int lpmd_init_config_state(lpmd_config_state_t *state)
+ 	state->active_cpus[0] = '\0';
+ 	state->cpumask_idx = CPUMASK_NONE;
+ 
+-	state->active_p_cores = 0;
+-	state->active_e_cores = 0;
+-	state->active_l_cores = 0;
++	state->active_p_cores[0] = '\0';
++	state->active_e_cores[0] = '\0';
++	state->active_l_cores[0] = '\0';
+ 
+ 	state->itmt_state = SETTING_IGNORE;
+ 	state->irq_migrate = SETTING_IGNORE;
+@@ -473,10 +473,13 @@ static void dump_states(lpmd_config_t *lpmd_config)
+ 		lpmd_log_info ("\tIRQMigrate:%d\n", state->irq_migrate);
+ 		if (state->active_cpus[0] != '\0')
+ 			lpmd_log_info ("\tactive_cpus:%s\n", state->active_cpus);
++		if (state->active_p_cores[0] != '\0')
++			lpmd_log_info ("\tactive_p_cores:%s\n", state->active_p_cores);
++		if (state->active_e_cores[0] != '\0')
++			lpmd_log_info ("\tactive_e_cores:%s\n", state->active_e_cores);
++		if (state->active_l_cores[0] != '\0')
++			lpmd_log_info ("\tactive_l_cores:%s\n", state->active_l_cores);
+ 		lpmd_log_info ("\tCPUMASK idx:%d\n", state->cpumask_idx);
+-		lpmd_log_info ("\tactive_p_cores:%d\n", state->active_p_cores);
+-		lpmd_log_info ("\tactive_e_cores:%d\n", state->active_e_cores);
+-		lpmd_log_info ("\tactive_l_cores:%d\n", state->active_l_cores);
+ 		lpmd_log_info ("\tBalancedSliderAC:%d\n", state->balance_slider_ac);
+ 		lpmd_log_info ("\tBalancedSliderDC:%d\n", state->balance_slider_dc);
+ 		lpmd_log_info ("\tSliderOffsetAC:%d\n", state->slider_offset_ac);
+-- 
+2.55.0
+

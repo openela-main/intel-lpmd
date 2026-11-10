@@ -1,0 +1,48 @@
+From 9bc60393b78df98a80ceec5b50dc487e8778f187 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Wed, 11 Feb 2026 18:45:10 +0100
+Subject: [PATCH 08/56] state_machine: Fix issue #106 - incorrect order of
+ polling interval writes
+
+When WLT proxy is enabled it's supposed to set it's own polling timeout.
+The problem is in the state machine an early return happens - that
+disables polling timeout - when the non-proxy polling is disabled. Given
+that it has nothing to do with the proxy polling it should not interfere
+in the proxy setting it's own timeouts.
+
+Change order of the early returns so that it happens after the WLT proxy
+check - thereby not overwriting the interval assigned by the proxy code.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/lpmd_state_machine.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/lpmd_state_machine.c b/src/lpmd_state_machine.c
+index f1b736a..1f40c02 100644
+--- a/src/lpmd_state_machine.c
++++ b/src/lpmd_state_machine.c
+@@ -174,16 +174,16 @@ static int get_config_state_interval(lpmd_config_t *config, int idx)
+ {
+ 	lpmd_config_state_t *state = &config->config_states[idx];
+ 
++	/* wlt proxy updates polling separately */
++	if (config->wlt_proxy_enable)
++		return 0;
++
+ 	/* Start polling only when needed */
+ 	if (!polling_enabled) {
+ 		config->data.polling_interval = -1;
+ 		return 0;
+ 	}
+ 
+-	/* wlt proxy updates polling separately */
+-	if (config->wlt_proxy_enable)
+-		return 0;
+-
+ 	/* Always start with minumum polling interval for a new state */
+ 	if (idx != current_idx) {
+ 		config->data.polling_interval = state->min_poll_interval;
+-- 
+2.55.0
+

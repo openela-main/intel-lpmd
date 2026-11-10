@@ -1,0 +1,27 @@
+From e08ccef11217a1b0cd7355ba5708fce56a1d02cd Mon Sep 17 00:00:00 2001
+From: Jan Engelhardt <jengelh@inai.de>
+Date: Fri, 16 Jan 2026 11:41:50 +0100
+Subject: [PATCH 05/56] build: fix spelling in error message when libsystemd is
+ absent
+
+Signed-off-by: Jan Engelhardt <jengelh@inai.de>
+---
+ configure.ac | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configure.ac b/configure.ac
+index 4f79d86..d35d75b 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -69,7 +69,7 @@ PKG_CHECK_MODULES(libnlgenl30, [libnl-genl-3.0], libnlgenl30=yes, libnlgenl30=no
+ 
+ PKG_CHECK_MODULES([SYSTEMD], [libsystemd], [],
+       [PKG_CHECK_MODULES([SYSTEMD], [libsystemd-daemon], [],
+-       AC_MSG_ERROR([libsystemd support requested but found]))])
++       AC_MSG_ERROR([libsystemd support requested but not found]))])
+ 
+ PKG_CHECK_MODULES(UPOWER, upower-glib)
+ 
+-- 
+2.55.0
+

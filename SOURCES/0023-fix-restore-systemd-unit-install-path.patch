@@ -1,0 +1,26 @@
+From 8c150e609c55dad801f5b7925b5ccc33d81d83b7 Mon Sep 17 00:00:00 2001
+From: Peter Jung <admin@ptr1337.dev>
+Date: Sat, 11 Apr 2026 11:34:15 +0200
+Subject: [PATCH 23/56] fix: restore systemd unit install path
+
+Signed-off-by: Peter Jung <admin@ptr1337.dev>
+---
+ configure.ac | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configure.ac b/configure.ac
+index b212c4d..f0f5250 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -34,7 +34,7 @@ PKG_PROG_PKG_CONFIG
+ AC_ARG_WITH([systemdsystemunitdir],
+ 	[AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files])],
+ 	[], [with_systemdsystemunitdir=$($PKG_CONFIG --variable=systemdsystemunitdir systemd)])
+-AS_IF(["x$with_systemdsystemunitdir" != xno], [
++AS_IF([test "x$with_systemdsystemunitdir" != xno], [
+         AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])
+ ])
+ 
+-- 
+2.55.0
+

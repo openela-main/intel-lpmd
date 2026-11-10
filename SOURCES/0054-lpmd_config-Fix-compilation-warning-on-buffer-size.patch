@@ -1,0 +1,28 @@
+From 86b4fabadf89ac00d93e179c21ffe8a48c76653e Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Fri, 22 May 2026 11:43:24 +0200
+Subject: [PATCH 54/56] lpmd_config: Fix compilation warning on buffer size
+
+Fix unnecessary -1 in strncpy() by moving it over to snprintf().
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/lpmd_config.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lpmd_config.c b/src/lpmd_config.c
+index b6ae995..444ee98 100644
+--- a/src/lpmd_config.c
++++ b/src/lpmd_config.c
+@@ -571,7 +571,7 @@ int lpmd_get_config(struct lpmd_config_t *lpmd_config)
+ 		return LPMD_ERROR;
+ 	}
+ 
+-	strncpy(lpmd_config->file_name, file_name, MAX_FILE_NAME_PATH - 1);
++	snprintf(lpmd_config->file_name, MAX_FILE_NAME_PATH, "%s", file_name);
+ 
+ process_xml:
+ 	doc = xmlReadFile(file_name, NULL, 0);
+-- 
+2.55.0
+

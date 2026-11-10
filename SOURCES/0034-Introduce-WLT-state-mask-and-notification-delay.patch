@@ -1,0 +1,224 @@
+From 14c1b59eb5687477f6f4b1e06987c5ba1b150393 Mon Sep 17 00:00:00 2001
+From: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+Date: Tue, 14 Apr 2026 16:50:16 -0700
+Subject: [PATCH 34/56] Introduce WLT state mask and notification delay
+
+Notification Delay:
+Set user configurable
+/sys/bus/pci/devices/0000\:00\:04.0/workload_hint/notification_delay_ms
+On some SoCs the default delay of 100ms causes too many interrupts.
+
+WLT state mask
+Each state using WLT can use a mask of WLTs instead of one value.
+This allows one state for multiple WLT values, which doesn't need any
+special config. This way state tranistion can be avoided.
+
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+---
+ man/intel_lpmd_config.xml.5 |  7 +++++++
+ src/include/lpmd.h          |  3 +++
+ src/lpmd_config.c           | 11 ++++++++++-
+ src/lpmd_proc.c             |  5 +++++
+ src/lpmd_state_machine.c    | 15 ++++++++++++++-
+ src/lpmd_wlt.c              | 22 ++++++++++++++++++++++
+ 6 files changed, 61 insertions(+), 2 deletions(-)
+
+diff --git a/man/intel_lpmd_config.xml.5 b/man/intel_lpmd_config.xml.5
+index e6bea7c..013448e 100644
+--- a/man/intel_lpmd_config.xml.5
++++ b/man/intel_lpmd_config.xml.5
+@@ -77,6 +77,8 @@ specifies if the HFI monitor can capture the HFI hints for survivability mode.
+ .PP
+ .B WLTHintEnable
+ Enable use of hardware Workload type hints.
++.B WLTHintNotificationDelay
++Set hardware workload notification delay in milliseconds.
+ .PP
+ .B WLTProxyEnable
+ Enable use of Proxy Workload type hints.
+@@ -147,6 +149,11 @@ Workload type value to enter into this state. If this value is defined
+ then utilization based entry triggers are not used. To use this
+ WLTHintEnable must be enabled, so that hardware notifications are enabled.
+ .PP
++.B WLTTypeMask
++Mask of workload type values to enter into this state. This has higher priority
++than WLTType. If this value is defined then utilization based entry triggers
++are not used.
++.PP
+ .B ActiveCPUs
+ Active CPUs in this state. The list can be comma separated or use "-" for
+ a range. This is optional to have active CPUs in a state.
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index 720c822..f13fcb8 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -156,6 +156,7 @@ typedef struct {
+ 	int valid;
+ 	char name[MAX_STATE_NAME];
+ 	int wlt_type;
++	int wlt_type_mask;
+ 	int entry_system_load_thres;
+ 	int exit_system_load_thres;
+ 	int exit_system_load_hyst;
+@@ -198,6 +199,7 @@ typedef struct {
+ 	int powersaver_def;
+ 	int hfi_lpm_enable;
+ 	int wlt_hint_enable;
++	int wlt_notification_delay;
+ 	int wlt_hint_poll_enable;
+ 	int wlt_proxy_enable;
+ 	int wlt_hint_mask;
+@@ -338,6 +340,7 @@ int hfi_update(void);
+ int wlt_init(void);
+ int wlt_exit(void);
+ int wlt_update(int fd);
++int wlt_set_notification_delay(int delay);
+ 
+ /* lpmd_misc.c */
+ void itmt_init(void);
+diff --git a/src/lpmd_config.c b/src/lpmd_config.c
+index 7c37375..b459651 100644
+--- a/src/lpmd_config.c
++++ b/src/lpmd_config.c
+@@ -61,7 +61,9 @@ static void lpmd_parse_state(xmlDoc *doc, xmlNode *a_node, lpmd_config_t *config
+ 			snprintf(state->name, MAX_STATE_NAME - 1, "%s", tmp_value);
+ 			state->name[MAX_STATE_NAME - 1] = '\0';
+ 		}
+-		if (!strncmp((const char*)cur_node->name, "WLTType", strlen("WLTType")))
++		if (!strncmp((const char*)cur_node->name, "WLTTypeMask", strlen("WLTTypeMask")))
++			state->wlt_type_mask = strtol (tmp_value, &pos, 10);
++		else if (!strncmp((const char*)cur_node->name, "WLTType", strlen("WLTType")))
+ 			state->wlt_type = strtol (tmp_value, &pos, 10);
+ 		if (!strncmp((const char*)cur_node->name, "EntrySystemLoadThres", strlen("EntrySystemLoadThres")))
+ 			state->entry_system_load_thres = strtol (tmp_value, &pos, 10);
+@@ -207,6 +209,7 @@ static void lpmd_init_config(lpmd_config_t *config)
+ 	config->slider_offset_def_ac = -1;
+ 	config->slider_offset_def_dc = -1;
+ 	config->wlt_hint_mask = -1;
++	config->wlt_notification_delay = -1;
+ }
+ 
+ static int lpmd_fill_config(xmlDoc *doc, xmlNode *a_node, lpmd_config_t *lpmd_config)
+@@ -245,6 +248,12 @@ static int lpmd_fill_config(xmlDoc *doc, xmlNode *a_node, lpmd_config_t *lpmd_co
+ 							|| (lpmd_config->wlt_hint_enable != 1 && lpmd_config->wlt_hint_enable != 0))
+ 						goto err;
+ 				}
++				else if (!strncmp((const char*)cur_node->name, "WLTHintNotificationDelay", strlen("WLTHintNotificationDelay"))) {
++					errno = 0;
++					lpmd_config->wlt_notification_delay = strtol (tmp_value, &pos, 10);
++					if (errno || *pos != '\0' || lpmd_config->wlt_notification_delay < 0)
++						goto err;
++				}
+ 				else if (!strncmp((const char*)cur_node->name, "WLTHintMask", strlen("WLTHintMask"))) {
+ 					errno = 0;
+ 					lpmd_config->wlt_hint_mask = strtol (tmp_value, &pos, 10);
+diff --git a/src/lpmd_proc.c b/src/lpmd_proc.c
+index 1c69af2..91d1d15 100644
+--- a/src/lpmd_proc.c
++++ b/src/lpmd_proc.c
+@@ -493,6 +493,11 @@ int lpmd_main(void)
+ 				}
+ 			}
+ 		}
++		if (lpmd_config.wlt_notification_delay != -1) {
++			if (wlt_set_notification_delay(lpmd_config.wlt_notification_delay) != LPMD_SUCCESS) {
++				lpmd_log_error ("Error setting WLT notification delay. wlt_notification_delay set to default value\n");
++			}
++		}
+ 	}
+ 
+ 	pthread_attr_init (&lpmd_attr);
+diff --git a/src/lpmd_state_machine.c b/src/lpmd_state_machine.c
+index 15216c5..593de9e 100644
+--- a/src/lpmd_state_machine.c
++++ b/src/lpmd_state_machine.c
+@@ -91,6 +91,7 @@ int lpmd_init_config_state(lpmd_config_state_t *state)
+ 	state->name[0] = '\0';
+ 
+ 	state->wlt_type = -1;
++	state->wlt_type_mask = -1;
+ 
+ 	state->entry_system_load_thres = 0;
+ 	state->exit_system_load_thres = 0;
+@@ -141,6 +142,13 @@ static int config_state_match(lpmd_config_t *config, int idx)
+ 	if (!state->valid)
+ 		return 0;
+ 
++	if (state->wlt_type_mask != -1) {
++		if (config->wlt_hint_mask != -1)
++			wlt_index &= config->wlt_hint_mask;
++
++		if (!(state->wlt_type_mask & (1 << wlt_index)))
++			return 0;
++	}
+ 	if (state->wlt_type != -1) {
+ 		if (config->wlt_hint_mask != -1)
+ 			wlt_index &= config->wlt_hint_mask;
+@@ -221,6 +229,9 @@ static void dump_state(lpmd_config_state_t *state, char *str, int debug)
+ 	if (state->wlt_type)
+ 		offset += snprintf(buf + offset , MAX_STR_LENGTH - offset, "WLT [%2d] ", state->wlt_type);
+ 
++	if (state->wlt_type_mask)
++		offset += snprintf(buf + offset , MAX_STR_LENGTH - offset, "WLTMASK [%2d] ", state->wlt_type_mask);
++
+ 	if (state->entry_system_load_thres)
+ 		offset += snprintf(buf + offset , MAX_STR_LENGTH - offset, "SYS [%6d] ", state->entry_system_load_thres / 100);
+ 
+@@ -431,6 +442,7 @@ static void dump_states(lpmd_config_t *lpmd_config)
+ 	lpmd_log_info ("Mode:%d\n", lpmd_config->mode);
+ 	lpmd_log_info ("HFI LPM Enable:%d\n", lpmd_config->hfi_lpm_enable);
+ 	lpmd_log_info ("WLT Hint Enable:%d\n", lpmd_config->wlt_hint_enable);
++	lpmd_log_info ("WLT Hint Notification Delay:%d\n", lpmd_config->wlt_notification_delay);
+ 	lpmd_log_info ("WLT Proxy Enable:%d\n", lpmd_config->wlt_proxy_enable);
+ 	lpmd_log_info ("WLT Proxy Enable:%d\n", lpmd_config->wlt_hint_poll_enable);
+ 	lpmd_log_info ("WLT Hint mask:%d\n", lpmd_config->wlt_hint_mask);
+@@ -464,6 +476,7 @@ static void dump_states(lpmd_config_t *lpmd_config)
+ 		lpmd_log_info ("\tentry_gfx_load_thres:%d\n", state->enter_gfx_load_thres);
+ 		lpmd_log_info ("\texit_gfx_load_thres:%d\n", state->exit_gfx_load_thres);
+ 		lpmd_log_info ("\tWLT Type:%d\n", state->wlt_type);
++		lpmd_log_info ("\tWLT Type Mask:%d\n", state->wlt_type_mask);
+ 		lpmd_log_info ("\tmin_poll_interval:%d\n", state->min_poll_interval);
+ 		lpmd_log_info ("\tmax_poll_interval:%d\n", state->max_poll_interval);
+ 		lpmd_log_info ("\tpoll_interval_increment:%d\n", state->poll_interval_increment);
+@@ -594,7 +607,7 @@ static int config_states_update_config(lpmd_config_t *config)
+ 		if (state->cpumask_idx == CPUMASK_HFI)
+ 			config->hfi_lpm_enable = 1;
+ 
+-		if (state->wlt_type != -1)
++		if (state->wlt_type != -1 || state->wlt_type_mask != -1)
+ 			config->wlt_hint_enable = 1;
+ 
+ 		if (state->entry_system_load_thres)
+diff --git a/src/lpmd_wlt.c b/src/lpmd_wlt.c
+index 4592772..d44a895 100644
+--- a/src/lpmd_wlt.c
++++ b/src/lpmd_wlt.c
+@@ -120,3 +120,25 @@ int wlt_init (void)
+ 
+ 	return fd;
+ }
++
++int wlt_set_notification_delay(int delay)
++{
++	char delay_str[64];
++	int fd;
++
++	// Set notification delay
++	fd = open(WORKLOAD_NOTIFICATION_DELAY_ATTRIBUTE, O_RDWR);
++	if (fd < 0)
++		return -1;
++
++	snprintf(delay_str, sizeof(delay_str), "%d\n", delay);
++
++	if (write(fd, delay_str, strlen(delay_str)) < 0) {
++		close(fd);
++		return -1;
++	}
++
++	close(fd);
++
++	return 0;
++}
+-- 
+2.55.0
+

@@ -1,0 +1,258 @@
+From 212ec106b49f4ef92bfac9282f3ea98a7df68685 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Tue, 16 Dec 2025 13:38:12 +0100
+Subject: [PATCH 30/56] lpmd_cpumask: Dynamic core type cpumask allocation
+
+Statically allocated setup of the core type bitmasks can be optimized by
+moving to dynamic allocation. The shift is made easier by the program
+already discovering the maximum number of cpus on the system.
+
+Setup dynamic allocation and freeing of the core type bitmasks.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/include/lpmd.h       | 13 +++++--------
+ src/lpmd_cpu.c           | 13 +++++++++----
+ src/lpmd_cpumask.c       | 28 ++++++++++++++++++++++++----
+ src/lpmd_proc.c          | 16 +++++++++++-----
+ src/lpmd_state_machine.c |  4 ++--
+ 5 files changed, 51 insertions(+), 23 deletions(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index 3bb8fb9..f35b46e 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -108,7 +108,6 @@ typedef struct {
+ #define MAX_CONFIG_STATES	10
+ #define MAX_STATE_NAME		32
+ #define MAX_CONFIG_LEN		64
+-#define MAX_CPUS		64
+ 
+ enum lpmd_states {
+ 	LPMD_OFF,
+@@ -191,10 +190,6 @@ typedef struct {
+ 	int steady;
+ }lpmd_config_state_t;
+ 
+-struct core_masks_t {
+-	unsigned char cmask[CORE_TYPES_COUNT][MAX_CPUS / 8];
+-};
+-
+ // lpmd config data
+ typedef struct {
+ 	int mode;
+@@ -231,8 +226,6 @@ typedef struct {
+ 	int config_state_count;
+ 	int tdp;
+ 
+-	struct core_masks_t core_type_masks;
+-
+ 	int balance_slider_def_ac;
+ 	int slider_offset_def_ac;
+ 	int balance_slider_def_dc;
+@@ -240,6 +233,7 @@ typedef struct {
+ 
+ 	lpmd_config_state_t config_states[MAX_STATES];
+ 	lpmd_data_t data;
++	unsigned char *core_type_masks[CORE_TYPES_COUNT];
+ } lpmd_config_t;
+ 
+ enum lpm_cpu_process_mode {
+@@ -392,9 +386,12 @@ int cpumask_alloc(void);
+ int cpumask_free(enum cpumask_idx idx);
+ int cpumask_reset(enum cpumask_idx idx);
+ 
++void free_cpu_type_masks(lpmd_config_t *lpmd_config);
++int allocate_cpu_type_masks(lpmd_config_t *lpmd_config);
++
+ int cpumask_add_cpu(int cpu, enum cpumask_idx idx);
+ int cpumask_init_cpus(char *buf, enum cpumask_idx idx);
+-int cpumask_init_cpus_type(int count, enum cpumask_idx idx, struct core_masks_t *cmasks, enum core_type type);
++int cpumask_init_cpus_type(int count, enum cpumask_idx idx, unsigned char **cmasks, enum core_type type);
+ int cpumask_nr_cpus(enum cpumask_idx idx);
+ int cpumask_has_cpu(enum cpumask_idx idx);
+ 
+diff --git a/src/lpmd_cpu.c b/src/lpmd_cpu.c
+index d71ca6c..1930eab 100644
+--- a/src/lpmd_cpu.c
++++ b/src/lpmd_cpu.c
+@@ -313,6 +313,11 @@ int detect_cpu_topo(lpmd_config_t *lpmd_config)
+ 	if (ret)
+ 		return ret;
+ 
++	/* Allocate space for per-type cpu masks */
++	ret = allocate_cpu_type_masks(lpmd_config);
++	if (ret)
++		return ret;
++
+ 	cpumask_reset(CPUMASK_ONLINE);
+ 	pcores = ecores = lcores = 0;
+ 
+@@ -341,22 +346,22 @@ int detect_cpu_topo(lpmd_config_t *lpmd_config)
+ 	/* Here it is the first time we migrate CPUs, must clear the previous cgroup settings */
+ 	cgroup_cleanup();
+ 
+-	memset(lpmd_config->core_type_masks.cmask[0], 0, CORE_TYPES_COUNT * MAX_CPUS / 8);
++	memset(lpmd_config->core_type_masks[0], 0, CORE_TYPES_COUNT * get_max_cpus() / 8);
+ 
+ 	for (i = 0; i < get_max_cpus(); i++) {
+ 		if (!is_cpu_online(i))
+ 			continue;
+ 		if (is_cpu_pcore(i)) {
+ 			pcores++;
+-			lpmd_config->core_type_masks.cmask[P_CORE][i / 8] |= 1 << (i % 8);
++			lpmd_config->core_type_masks[P_CORE][i / 8] |= 1 << (i % 8);
+ 		}
+ 		else if (is_cpu_ecore(i)) {
+ 			ecores++;
+-			lpmd_config->core_type_masks.cmask[E_CORE][i / 8] |= 1 << (i % 8);
++			lpmd_config->core_type_masks[E_CORE][i / 8] |= 1 << (i % 8);
+ 		}
+ 		else if (is_cpu_lcore(i)) {
+ 			lcores++;
+-			lpmd_config->core_type_masks.cmask[L_CORE][i / 8] |= 1 << (i % 8);
++			lpmd_config->core_type_masks[L_CORE][i / 8] |= 1 << (i % 8);
+ 		}
+ 	}
+ 
+diff --git a/src/lpmd_cpumask.c b/src/lpmd_cpumask.c
+index d110703..1dddd23 100644
+--- a/src/lpmd_cpumask.c
++++ b/src/lpmd_cpumask.c
+@@ -177,12 +177,32 @@ int cpumask_add_cpu(int cpu, enum cpumask_idx idx)
+ 	return LPMD_SUCCESS;
+ }
+ 
++void free_cpu_type_masks(lpmd_config_t *lpmd_config)
++{
++	int i;
++	for (i = 0 ; i < CORE_TYPES_COUNT ; i++)
++		free(lpmd_config->core_type_masks[i]);
++}
++
++int allocate_cpu_type_masks(lpmd_config_t *lpmd_config)
++{
++	int i;
++	for (i = 0 ; i < CORE_TYPES_COUNT ; i++) {
++		lpmd_config->core_type_masks[i] = malloc(get_max_cpus() / 8);
++		if (!lpmd_config->core_type_masks[i]) {
++			free_cpu_type_masks(lpmd_config);
++			return -1;
++		}
++	}
++	return 0;
++}
++
+ static unsigned int get_next_cpu_cmask(unsigned int id, enum core_type type, unsigned char *cmask)
+ {
+ 	bool ret;
+ 	int i;
+ 
+-	for (i = id ; i < MAX_CPUS ; i++) {
++	for (i = id ; i < get_max_cpus() ; i++) {
+ 		ret = !!(cmask[i / 8] & (1 << (i % 8)));
+ 		if (ret)
+ 			return i;
+@@ -191,7 +211,7 @@ static unsigned int get_next_cpu_cmask(unsigned int id, enum core_type type, uns
+ }
+ 
+ 
+-int cpumask_init_cpus_type(int count, enum cpumask_idx idx, struct core_masks_t *cmasks, enum core_type type)
++int cpumask_init_cpus_type(int count, enum cpumask_idx idx, unsigned char **cmasks, enum core_type type)
+ {
+ 	unsigned int current, next;
+ 	int nr_cpus = 0;
+@@ -199,10 +219,10 @@ int cpumask_init_cpus_type(int count, enum cpumask_idx idx, struct core_masks_t
+ 	if (!count)
+ 		return 0;
+ 
+-	current = get_next_cpu_cmask(0, type, cmasks->cmask[type]);
++	current = get_next_cpu_cmask(0, type, cmasks[type]);
+ 	while(nr_cpus != count) {
+ 		cpumask_add_cpu(current, idx);
+-		next = get_next_cpu_cmask(current + 1, type, cmasks->cmask[type]);
++		next = get_next_cpu_cmask(current + 1, type, cmasks[type]);
+ 		if(next == current) /* Couldn't find next core of the provided type */
+ 			return nr_cpus;
+ 		nr_cpus++;
+diff --git a/src/lpmd_proc.c b/src/lpmd_proc.c
+index ad58c29..1c69af2 100644
+--- a/src/lpmd_proc.c
++++ b/src/lpmd_proc.c
+@@ -391,28 +391,28 @@ int lpmd_main(void)
+ 
+ 	ret = detect_cpu_topo(&lpmd_config);
+ 	if (ret)
+-		return ret;
++		goto cleanup;
+ 
+ //	 Call all lpmd related functions here
+ 	ret = lpmd_get_config (&lpmd_config);
+ 	if (ret)
+-		return ret;
++		goto cleanup;
+ 
+ 	pthread_mutex_init (&lpmd_mutex, NULL);
+ 
+ 	ret = detect_lpm_cpus(lpmd_config.lp_mode_cpus);
+ 	if (ret)
+-		return ret;
++		goto cleanup;
+ 
+ 	ret = cgroup_init(&lpmd_config);
+ 	if (ret)
+-		return ret;
++		goto cleanup;
+ 
+ 	itmt_init();
+ 
+ 	ret = epp_epb_init();
+ 	if (ret)
+-		return ret;
++		goto cleanup;
+ 
+ 	if (!has_hfi_capability ())
+ 		lpmd_config.hfi_lpm_enable = 0;
+@@ -420,6 +420,9 @@ int lpmd_main(void)
+ 	/* Must done after init_cpu() */
+ 	lpmd_build_config_states(&lpmd_config);
+ 
++	/* Cleanup dynamically allocated core-type cpumasks */
++	free_cpu_type_masks(&lpmd_config);
++
+ 	ret = irq_init();
+ 	if (ret)
+ 		return ret;
+@@ -514,4 +517,7 @@ int lpmd_main(void)
+ 	lpmd_log_debug ("lpmd_init succeeds\n");
+ 
+ 	return LPMD_SUCCESS;
++cleanup:
++	free_cpu_type_masks(&lpmd_config);
++	return ret;
+ }
+diff --git a/src/lpmd_state_machine.c b/src/lpmd_state_machine.c
+index 22fd997..a3b69c6 100644
+--- a/src/lpmd_state_machine.c
++++ b/src/lpmd_state_machine.c
+@@ -655,7 +655,7 @@ static int build_state_cpumask_activecpus(lpmd_config_state_t *state)
+ 	return 0;
+ }
+ 
+-static int build_state_cpumask_cputypes(lpmd_config_state_t *state, struct core_masks_t *cmasks)
++static int build_state_cpumask_cputypes(lpmd_config_state_t *state, unsigned char **cmasks)
+ {
+ 	int ret;
+ 
+@@ -706,7 +706,7 @@ int lpmd_build_config_states(lpmd_config_t *lpmd_config)
+ 
+ 		ret = build_state_cpumask_activecpus(state);
+ 		if (ret == -2)
+-			build_state_cpumask_cputypes(state, &lpmd_config->core_type_masks);
++			build_state_cpumask_cputypes(state, lpmd_config->core_type_masks);
+ 		else if (ret)
+ 			continue;
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,45 @@
+From 9b40a73836b81f339fa419b594052c2c587964e4 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Thu, 12 Mar 2026 15:22:15 +0100
+Subject: [PATCH 07/56] lpmd_cgroup: simple isolation fix - works without
+ interference
+
+cgroup isolation mode doesn't work in LPMD because when writing
+'isolated' to cpuset.cpus.partition file the expectation is that
+cpuset.cpus will be a subset of cpuset.cpus.exclusive of that cgroup.
+
+The simple fix is to write the same content to cpuset.cpus and
+cpuset.cpus.exclusive when switching into the isolated mode.
+
+However a problem can appear if there are any other cgroups on the
+system that have exclusive cpus claimed. For one LPMD will just shut
+down if it can't set affinity into any cpu it wants during core type
+discovery phase. Aside from that using this simple version of the fix
+will later result in creating an invalid cgroup partition.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/lpmd_cgroup.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/lpmd_cgroup.c b/src/lpmd_cgroup.c
+index 46a3c50..5b53179 100644
+--- a/src/lpmd_cgroup.c
++++ b/src/lpmd_cgroup.c
+@@ -177,10 +177,12 @@ static int process_cpu_isolate(lpmd_config_state_t *state)
+ 		return 1;
+ 
+ 	if (!cpumask_equal(state->cpumask_idx, CPUMASK_ONLINE)) {
+-		if (lpmd_write_str ("/sys/fs/cgroup/lpm/cpuset.cpus", get_cpu_isolation_str(state->cpumask_idx), LPMD_LOG_DEBUG))
++		if (lpmd_write_str ("/sys/fs/cgroup/lpm/cpuset.cpus.exclusive", get_cpu_isolation_str(state->cpumask_idx), LPMD_LOG_DEBUG))
+ 			return 1;
+ 		if (lpmd_write_str ("/sys/fs/cgroup/lpm/cpuset.cpus.partition", "isolated", LPMD_LOG_DEBUG))
+ 			return 1;
++		if (lpmd_write_str ("/sys/fs/cgroup/lpm/cpuset.cpus", get_cpu_isolation_str(state->cpumask_idx), LPMD_LOG_DEBUG))
++			return 1;
+ 	} else {
+ 		if (lpmd_write_str ("/sys/fs/cgroup/lpm/cpuset.cpus", get_cpu_isolation_str(CPUMASK_ONLINE), LPMD_LOG_DEBUG))
+ 			return 1;
+-- 
+2.55.0
+

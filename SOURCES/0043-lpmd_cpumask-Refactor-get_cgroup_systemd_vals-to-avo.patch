@@ -1,0 +1,115 @@
+From 88a42cafb9695f6111e3133d72986df8e26c1c58 Mon Sep 17 00:00:00 2001
+From: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+Date: Mon, 16 Mar 2026 16:05:58 +0100
+Subject: [PATCH 43/56] lpmd_cpumask: Refactor get_cgroup_systemd_vals() to
+ avoid passing the size
+
+Passing size as an argument in unnecessary as it can be obtained through
+the get_max_cpus() global LPMD call.
+
+Signed-off-by: Maciej Wieczor-Retman <maciej.wieczor-retman@intel.com>
+---
+ src/include/lpmd.h |  2 +-
+ src/lpmd_cgroup.c  |  8 ++++----
+ src/lpmd_cpumask.c | 15 +++++++--------
+ 3 files changed, 12 insertions(+), 13 deletions(-)
+
+diff --git a/src/include/lpmd.h b/src/include/lpmd.h
+index 8c7193d..123c785 100644
+--- a/src/include/lpmd.h
++++ b/src/include/lpmd.h
+@@ -427,7 +427,7 @@ char* get_cpus_hexstr(enum cpumask_idx idx);
+ char *get_proc_irq_str(enum cpumask_idx idx);
+ char *get_irqbalance_str(enum cpumask_idx idx);
+ char *get_cpu_isolation_str(enum cpumask_idx idx);
+-uint8_t *get_cgroup_systemd_vals(enum cpumask_idx idx, int *size);
++uint8_t *get_cgroup_systemd_vals(enum cpumask_idx idx);
+ 
+ /* socket.c */
+ int socket_init_connection(char *name);
+diff --git a/src/lpmd_cgroup.c b/src/lpmd_cgroup.c
+index e74c8cf..1dddce0 100644
+--- a/src/lpmd_cgroup.c
++++ b/src/lpmd_cgroup.c
+@@ -115,10 +115,10 @@ finish: if (ret >= 0) {
+ 
+ static int restore_systemd_cgroup(void)
+ {
+-	int size;
++	int size = get_max_cpus() / 8;
+ 	uint8_t *vals;
+ 
+-	vals = get_cgroup_systemd_vals(CPUMASK_ONLINE, &size);
++	vals = get_cgroup_systemd_vals(CPUMASK_ONLINE);
+ 	if (!vals)
+ 		return -1;
+ 
+@@ -131,11 +131,11 @@ static int restore_systemd_cgroup(void)
+ 
+ static int update_systemd_cgroup(lpmd_config_state_t *state)
+ {
+-	int size;
++	int size = get_max_cpus() / 8;
+ 	uint8_t *vals;
+ 	int ret;
+ 
+-	vals = get_cgroup_systemd_vals(state->cpumask_idx, &size);
++	vals = get_cgroup_systemd_vals(state->cpumask_idx);
+ 	if (!vals)
+ 		return -1;
+ 
+diff --git a/src/lpmd_cpumask.c b/src/lpmd_cpumask.c
+index 6b9b6a8..95d3781 100644
+--- a/src/lpmd_cpumask.c
++++ b/src/lpmd_cpumask.c
+@@ -502,11 +502,12 @@ static char* get_cpus_str_reverse(enum cpumask_idx idx)
+ 	return cpumasks[idx].str_reverse;
+ }
+ 
+-static uint8_t *get_cpus_hexvals(enum cpumask_idx idx, int *size)
++static uint8_t *get_cpus_hexvals(enum cpumask_idx idx)
+ {
+-	int i, j, k;
++	int size = topo_max_cpus / 8;
+ 	uint8_t v = 0;
+ 	uint8_t *vals;
++	int i, j, k;
+ 
+ 	if (!cpumasks[idx].mask)
+ 		return NULL;
+@@ -514,12 +515,10 @@ static uint8_t *get_cpus_hexvals(enum cpumask_idx idx, int *size)
+ 	if (!CPU_COUNT_S(size_cpumask, cpumasks[idx].mask))
+ 		return NULL;
+ 
+-	*size = topo_max_cpus / 8;
+-
+ 	if (cpumasks[idx].hexvals)
+ 		return cpumasks[idx].hexvals;
+ 
+-	vals = calloc (*size, 1);
++	vals = calloc (size, 1);
+ 	if (!vals)
+ 		return NULL;
+ 
+@@ -527,7 +526,7 @@ static uint8_t *get_cpus_hexvals(enum cpumask_idx idx, int *size)
+ 		j = i % 8;
+ 		k = i / 8;
+ 
+-		if (k >= *size) {
++		if (k >= size) {
+ 			lpmd_log_error ("size too big\n");
+ 			free(vals);
+ 			return NULL;
+@@ -565,7 +564,7 @@ char *get_cpu_isolation_str(enum cpumask_idx idx)
+ 		return get_cpus_str_reverse(idx);
+ }
+ 
+-uint8_t *get_cgroup_systemd_vals(enum cpumask_idx idx, int *size)
++uint8_t *get_cgroup_systemd_vals(enum cpumask_idx idx)
+ {
+-	return get_cpus_hexvals(idx, size);
++	return get_cpus_hexvals(idx);
+ }
+-- 
+2.55.0
+
